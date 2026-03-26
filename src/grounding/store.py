@@ -565,6 +565,8 @@ class WebbKnowledgeStore(_BaseStore):
     ) -> dict[str, list[CourseVersion]]:
         left_rows = self.search_course_versions(query, snapshot_id=snapshot_id, school_year=school_year_a, limit=200)
         right_rows = self.search_course_versions(query, snapshot_id=snapshot_id, school_year=school_year_b, limit=200)
+        if not left_rows or not right_rows:
+            return {"added": [], "removed": [], "changed": []}
         left_by_key = {row.course_key: row for row in left_rows}
         right_by_key = {row.course_key: row for row in right_rows}
         added = [right_by_key[key] for key in right_by_key.keys() - left_by_key.keys()]

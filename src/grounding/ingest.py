@@ -531,6 +531,30 @@ def _course_rows_from_text(
     return rows
 
 
+def _course_row_quality(row: dict[str, Any]) -> tuple[int, int, int, int, int]:
+    description = _normalize_space(row.get("description"))
+    prerequisites = _normalize_space(row.get("prerequisites"))
+    teachers = row.get("teacher_names") or {}
+    teacher_names = teachers.get("names") if isinstance(teachers, dict) else None
+    return (
+        len(description),
+        len(prerequisites),
+        len(_normalize_space(row.get("grade_eligibility"))),
+        len(teacher_names or []),
+        len(_normalize_space(row.get("department"))),
+    )
+
+
+def _dedupe_course_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, str, str | None], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("snapshot_id") or ""), str(row.get("course_key") or ""), row.get("school_year"))
+        current = deduped.get(key)
+        if current is None or _course_row_quality(row) > _course_row_quality(current):
+            deduped[key] = row
+    return list(deduped.values())
+
+
 def _faculty_rows_from_payloads(
     payloads: list[Any],
     *,
@@ -948,6 +972,7 @@ def ingest_webb_site(
     store.upsert_source_documents(documents)
     store.upsert_retrieval_chunks(chunks)
     if courses:
+        courses = _dedupe_course_rows(courses)
         store.upsert_course_versions(courses)
     if faculty:
         store.upsert_faculty_profiles(faculty)

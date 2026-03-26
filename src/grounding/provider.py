@@ -575,7 +575,7 @@ class WebbGroundingProvider:
                 token in text.lower() for token in ["change", "changed", "difference", "different", "compare"]
             )
             hits = self._course_diff_hits(text, school_years) if wants_diff else self._course_hits(text, school_years, limit)
-            if not hits:
+            if not hits and not wants_diff:
                 hits = (
                     self._course_hits(text, school_years, limit)
                     or self._publication_hits(text, limit)

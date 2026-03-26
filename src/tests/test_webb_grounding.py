@@ -35,6 +35,12 @@ def test_webb_sync_populates_snapshot_and_queries(tmp_path: Path):
     assert course_result.hits
     assert "museum" in f"{course_result.hits[0].title} {course_result.hits[0].content}".lower()
 
+    course_diff_result = provider.query(
+        "How did math and computer science change from 2025-26 to 2026-27 at Webb?",
+        route="course_catalog",
+    )
+    assert not course_diff_result.hits
+
     handbook_result = provider.query("What does the handbook say about academic honesty?", route="handbook")
     assert handbook_result.hits
     content = handbook_result.hits[0].content.lower()
