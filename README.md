@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # WebbGPT
 
 WebbGPT is an end-to-end repository for training a real decoder-only language model from scratch, aligning it into a helpful assistant, grounding it on a multi-domain Webb service stack, evaluating it honestly, exporting it for inference, and serving it through a local API and browser UI.
@@ -864,6 +863,3 @@ The checked-in eval suite is intentionally broader than the earlier tiny slices,
 - Source precedence is intentional: handbook beats generated advice on policy questions, current course/faculty/athletics surfaces beat stale historical summaries for current facts, and unresolved conflicts should be surfaced rather than blended away.
 - The browser UI is intentionally conservative about presentation: it keeps the answer front and center, hides most trace data behind details, and surfaces malformed generations with retry plus repro actions instead of styling them as normal confident answers.
 - `webbgpt test` assumes the dev extras are installed. If `pytest`, `torch`, `sentencepiece`, `datasets`, or SQLAlchemy are missing, the CLI or imports will fail for the parts of the stack that depend on them.
-=======
-# webbgpt
->>>>>>> 468f16c493bf1ad968153b4133d7d8e090f92298
