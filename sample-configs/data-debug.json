@@ -1,0 +1,123 @@
+{
+  "allow_unsafe_code": false,
+  "continued_pretrain_sources": [
+    {
+      "deduplicate": false,
+      "format": "text",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_tokenizer_corpus",
+      "path": "data/raw/tokenizer_corpus.txt",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "continued_pretraining_token_budget": 15000000000,
+  "domain_tags": [
+    "philosophy",
+    "education",
+    "advising",
+    "course_catalog"
+  ],
+  "max_document_chars": 200000,
+  "min_document_chars": 128,
+  "preference_sources": [
+    {
+      "deduplicate": false,
+      "format": "jsonl",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_preference_examples",
+      "path": "data/local/preference.jsonl",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "preference_validation_sources": [
+    {
+      "deduplicate": false,
+      "format": "jsonl",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_preference_validation",
+      "path": "data/local/preference_validation.jsonl",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "prepared_shard_size": 2048,
+  "pretrain_sources": [
+    {
+      "deduplicate": false,
+      "format": "text",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_tokenizer_corpus",
+      "path": "data/raw/tokenizer_corpus.txt",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "pretraining_token_budget": 120000000000,
+  "seed": 52,
+  "sequence_length": 512,
+  "sft_sources": [
+    {
+      "deduplicate": false,
+      "format": "jsonl",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_sft_examples",
+      "path": "data/local/sft.jsonl",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "sft_validation_sources": [
+    {
+      "deduplicate": false,
+      "format": "jsonl",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_sft_validation",
+      "path": "data/local/sft_validation.jsonl",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "tokenizer_path": "artifacts/tokenizer/webbgpt.model",
+  "validation_sources": [
+    {
+      "deduplicate": false,
+      "format": "text",
+      "language": "en",
+      "metadata_fields": [],
+      "name": "local_tokenizer_corpus_validation",
+      "path": "data/raw/tokenizer_corpus.txt",
+      "pii_scrub": false,
+      "quality_filter": false,
+      "split": "train",
+      "text_field": "text",
+      "weight": 1.0
+    }
+  ],
+  "version": "1.0"
+}

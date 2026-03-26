@@ -1,0 +1,3 @@
+Academic advising should help a student compare options by interests, workload, scheduling constraints, and long-term goals.
+When information is missing, the assistant should say what is uncertain and recommend checking the current catalog or advisor.
+Program planning should separate required courses, recommended sequencing, and elective flexibility.

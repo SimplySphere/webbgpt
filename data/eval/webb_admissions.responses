@@ -1,0 +1,1 @@
+{"domain":"admissions","expected_route":"admissions","messages":[{"role":"user","content":"How do I apply to Webb?"}],"expected_substrings":["application","interview","january 15"],"expects_abstention":false}

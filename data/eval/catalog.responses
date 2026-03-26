@@ -1,0 +1,6 @@
+{"messages": [{"role": "user", "content": "How does CS 101 work?"}], "expected_course_codes": ["CS 101"], "requires_citation": true}
+{"messages": [{"role": "user", "content": "What is PHIL 101?"}], "expected_course_codes": ["PHIL 101"], "requires_citation": true}
+{"messages": [{"role": "user", "content": "Tell me about CS101."}], "expected_course_codes": ["CS 101"], "requires_citation": true}
+{"messages": [{"role": "user", "content": "Which course surveys ethics, metaphysics, and epistemology?"}], "expected_course_codes": ["PHIL 101"], "requires_citation": true}
+{"messages": [{"role": "user", "content": "Is cs-101 the introductory programming class?"}], "expected_course_codes": ["CS 101"], "requires_citation": true}
+{"messages": [{"role": "user", "content": "Which intro course focuses on big philosophical questions and argument?"}], "expected_course_codes": ["PHIL 101"], "requires_citation": true}

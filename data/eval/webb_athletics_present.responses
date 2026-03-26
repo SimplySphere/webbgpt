@@ -1,0 +1,2 @@
+{"domain":"athletics_present","expected_route":"athletics","messages":[{"role":"user","content":"Did Girls Tennis beat Woodcrest Christian in 2025-26?"}],"expected_any_substrings":["win 12-6","woodcrest christian"],"expects_abstention":false}
+{"domain":"athletics_present","expected_route":"athletics","messages":[{"role":"user","content":"Who coaches Girls Tennis and what is the season record?"}],"expected_any_substrings":["ricky lizardo","5-3"],"expects_abstention":false}

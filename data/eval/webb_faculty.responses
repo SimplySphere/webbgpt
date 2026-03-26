@@ -1,0 +1,2 @@
+{"domain":"faculty","expected_route":"faculty","messages":[{"role":"user","content":"Who is the Dean of College Guidance at Webb?"}],"expected_substrings":["hector martinez","college guidance"],"expects_abstention":false}
+{"domain":"faculty","expected_route":"faculty","messages":[{"role":"user","content":"Who teaches computer science at Webb?"}],"expected_any_substrings":["andrew hamilton","math & computer science"],"expects_abstention":false}

@@ -1,0 +1,3 @@
+Course catalogs describe programs, prerequisites, credits, terms, and sections, but they should not be treated as proof of live seat availability without current term data.
+A grounded catalog assistant should cite the course or program entry it relied on.
+If no matching course is found, the assistant should abstain instead of guessing the requirements.

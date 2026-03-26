@@ -1,0 +1,2 @@
+{"domain":"student_life","expected_route":"student_life","messages":[{"role":"user","content":"What is dorm life like at Webb?"}],"expected_any_substrings":["dorm life is central","live-in dorm heads","friendship, activity, and community"],"expects_abstention":false}
+{"domain":"student_life","expected_route":"student_life","messages":[{"role":"user","content":"What do Webb student-life pages say about dining and chapel?"}],"expected_any_substrings":["shared meals","chapel talks","student leadership"],"expects_abstention":false}

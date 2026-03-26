@@ -1,0 +1,23 @@
+{
+  "byte_fallback": true,
+  "character_coverage": 0.9995,
+  "max_sentence_length": 16384,
+  "model_prefix": "artifacts/tokenizer/webbgpt-7b",
+  "model_type": "bpe",
+  "normalization_rule_name": "nmt_nfkc",
+  "sample_input_sentence_size": 10000000,
+  "special_tokens": {
+    "assistant_token": "<|assistant|>",
+    "bos_token": "<s>",
+    "citation_token": "<|citation|>",
+    "eos_token": "</s>",
+    "pad_token": "<pad>",
+    "system_token": "<|system|>",
+    "tool_token": "<|tool|>",
+    "unk_token": "<unk>",
+    "user_token": "<|user|>"
+  },
+  "train_extremely_large_corpus": true,
+  "version": "1.0",
+  "vocab_size": 50176
+}

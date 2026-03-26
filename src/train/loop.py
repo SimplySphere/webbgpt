@@ -1,0 +1,497 @@
+from __future__ import annotations
+
+import contextlib
+import json
+import math
+import sys
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from config import TrainConfig
+from posttrain.eval import update_topk_candidates
+from train.checkpoint import CheckpointManager
+from train.distributed import barrier, is_main_process
+
+
+def _require_torch():
+    import torch
+    import torch.distributed as dist
+    from torch.utils.data import DataLoader
+
+    return torch, dist, DataLoader
+
+
+@dataclass(slots=True)
+class TrainState:
+    step: int = 0
+    tokens_seen: int = 0
+    examples_seen: int = 0
+    best_eval_loss: float = math.inf
+    best_eval_step: int = -1
+
+
+@dataclass(slots=True)
+class EvalControl:
+    stage_name: str
+    eval_metric_key: str = "loss"
+    evaluate_at_start: bool = False
+    early_eval_step: int | None = None
+    eval_interval_steps: int | None = None
+    validation_max_batches: int | None = None
+    best_min_delta: float = 0.0
+    early_stopping_patience_evals: int | None = None
+    overfit_train_loss_threshold: float | None = None
+    overfit_worsening_patience: int | None = None
+    train_dataset_size: int | None = None
+    validation_dataset_size: int | None = None
+    steps_per_epoch: int | None = None
+    eval_history_path: str | None = None
+
+
+def _to_device(batch: dict[str, Any], device):
+    torch, _, _ = _require_torch()
+    moved = {}
+    for key, value in batch.items():
+        moved[key] = value.to(device) if isinstance(value, torch.Tensor) else value
+    return moved
+
+
+def _infer_batch_size(batch: dict[str, Any]) -> int:
+    torch, _, _ = _require_torch()
+    for value in batch.values():
+        if isinstance(value, torch.Tensor) and value.ndim >= 1:
+            return int(value.shape[0])
+    return 1
+
+
+def build_dataloader(dataset, batch_size: int, shuffle: bool = True):
+    _, dist, DataLoader = _require_torch()
+    sampler = None
+    if dist.is_initialized():
+        from torch.utils.data.distributed import DistributedSampler
+
+        sampler = DistributedSampler(dataset, shuffle=shuffle, drop_last=shuffle)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle if sampler is None else False,
+        sampler=sampler,
+        pin_memory=True,
+        drop_last=shuffle,
+    )
+
+
+def evaluate_language_model(model, dataloader, max_batches: int | None) -> dict[str, float]:
+    torch, dist, _ = _require_torch()
+    device = next(model.parameters()).device
+    model.eval()
+    losses = []
+    with torch.no_grad():
+        for batch_index, batch in enumerate(dataloader):
+            if max_batches is not None and batch_index >= max_batches:
+                break
+            batch = _to_device(batch, device)
+            outputs = model(**batch)
+            losses.append(outputs.loss.detach())
+    if not losses:
+        return {"loss": math.nan, "perplexity": math.nan}
+    loss = torch.stack(losses).mean()
+    if dist.is_initialized():
+        dist.all_reduce(loss, op=dist.ReduceOp.AVG)
+    scalar_loss = float(loss.item())
+    model.train()
+    return {"loss": scalar_loss, "perplexity": math.exp(min(scalar_loss, 20.0))}
+
+
+def maybe_compile_model(model, enabled: bool):
+    torch, _, _ = _require_torch()
+    if enabled and hasattr(torch, "compile"):
+        try:
+            return torch.compile(model)
+        except RuntimeError as exc:
+            if "Dynamo is not supported on Python 3.12+" in str(exc):
+                print(
+                    "WebbGPT: skipping torch.compile because TorchDynamo is not supported on Python 3.12+ in this environment.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return model
+            raise
+    return model
+
+
+def save_run_metadata(train_config: TrainConfig, output_dir: str, extra: dict[str, Any] | None = None) -> None:
+    if not is_main_process():
+        return
+    path = Path(output_dir) / "run_metadata.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = train_config.to_dict()
+    if extra:
+        payload.update(extra)
+    path.write_text(json.dumps(payload, indent=2))
+
+
+def run_training(
+    model,
+    train_loader,
+    train_config: TrainConfig,
+    checkpoint_manager: CheckpointManager,
+    optimizer,
+    scheduler,
+    val_loader=None,
+    resume_from: str | None = None,
+    best_checkpoint_name: str | None = None,
+    eval_payload_callback: Callable[[Any, int, bool, TrainState, dict[str, Any]], dict[str, Any] | None] | None = None,
+    eval_fn: Callable[[Any, Any, int | None], dict[str, Any]] | None = None,
+    eval_control: EvalControl | None = None,
+    save_final_checkpoint: bool = False,
+) -> TrainState:
+    torch, _, _ = _require_torch()
+    state = TrainState()
+    last_saved_step = -1
+    last_eval_step = -1
+    last_eval_value = math.nan
+    no_improvement_evals = 0
+    worsening_evals = 0
+    should_stop_training = False
+    last_train_loss = math.nan
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    scaler_context = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+        if train_config.use_bf16 and torch.cuda.is_available()
+        else contextlib.nullcontext()
+    )
+    optimizer.zero_grad(set_to_none=True)
+    if resume_from:
+        loaded = checkpoint_manager.load(resume_from, model, optimizer=optimizer, scheduler=scheduler)
+        state.step = loaded.step
+        if "train_state" in loaded.payload.get("extra_state", {}):
+            persisted = loaded.payload["extra_state"]["train_state"]
+            state.tokens_seen = persisted.get("tokens_seen", state.tokens_seen)
+            state.examples_seen = persisted.get("examples_seen", state.examples_seen)
+            state.best_eval_loss = persisted.get("best_eval_loss", state.best_eval_loss)
+            state.best_eval_step = persisted.get("best_eval_step", state.best_eval_step)
+    model = maybe_compile_model(model, train_config.compile_model)
+
+    micro_step = 0
+    token_budget_reached = False
+
+    def _append_eval_history(payload: dict[str, Any]) -> None:
+        if eval_control is None or eval_control.eval_history_path is None or not is_main_process():
+            return
+        history_path = Path(eval_control.eval_history_path)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with history_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload) + "\n")
+
+    def _save_best_checkpoint(step: int) -> Path | None:
+        if best_checkpoint_name is None:
+            return None
+        barrier()
+        target = None
+        if is_main_process():
+            target = checkpoint_manager.save_named(
+                best_checkpoint_name,
+                step=step,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                extra_state={
+                    "train_state": {
+                        "tokens_seen": state.tokens_seen,
+                        "examples_seen": state.examples_seen,
+                        "best_eval_loss": state.best_eval_loss,
+                        "best_eval_step": state.best_eval_step,
+                    }
+                },
+            )
+        barrier()
+        return target
+
+    def _approx_epoch(step: int, *, initial_eval: bool, final_eval: bool) -> float | None:
+        if eval_control is None or eval_control.steps_per_epoch is None or eval_control.steps_per_epoch <= 0:
+            return None
+        if initial_eval:
+            return 0.0
+        if final_eval:
+            return state.step / float(eval_control.steps_per_epoch)
+        return (step + 1) / float(eval_control.steps_per_epoch)
+
+    def _write_selection_metadata(best_path: Path, payload: dict[str, Any]) -> None:
+        selection_path = best_path / "selection.json"
+        selection_path.write_text(json.dumps(payload, indent=2))
+
+    def _run_eval(step: int, *, final_eval: bool, initial_eval: bool = False) -> None:
+        nonlocal last_eval_step, last_eval_value, no_improvement_evals, worsening_evals, should_stop_training
+        evaluator = eval_fn or evaluate_language_model
+        max_eval_batches = train_config.num_eval_batches
+        if eval_control is not None:
+            max_eval_batches = eval_control.validation_max_batches
+        metrics = evaluator(model, val_loader, max_eval_batches)
+        payload: dict[str, Any] = {"step": step, "eval": metrics}
+        if final_eval:
+            payload["final_eval"] = True
+        if initial_eval:
+            payload["initial_eval"] = True
+        if eval_control is not None:
+            approx_epoch = _approx_epoch(step, initial_eval=initial_eval, final_eval=final_eval)
+            if approx_epoch is not None:
+                payload["approx_epoch"] = approx_epoch
+            payload["train_dataset_size"] = eval_control.train_dataset_size
+            payload["validation_dataset_size"] = eval_control.validation_dataset_size
+            payload["train_examples_seen"] = state.examples_seen
+            payload["validation_examples_evaluated"] = metrics.get(
+                "examples_evaluated", eval_control.validation_dataset_size
+            )
+        improved = (
+            not math.isnan(float(metrics.get((eval_control.eval_metric_key if eval_control else "loss"), math.nan)))
+            and float(metrics.get((eval_control.eval_metric_key if eval_control else "loss"), math.nan))
+            < state.best_eval_loss
+            - (eval_control.best_min_delta if eval_control is not None else 0.0)
+        )
+        metric_key = eval_control.eval_metric_key if eval_control is not None else "loss"
+        selection_value = float(metrics.get(metric_key, math.nan))
+        previous_best_value = None if math.isinf(state.best_eval_loss) else state.best_eval_loss
+        previous_best_step = state.best_eval_step if state.best_eval_step >= 0 else None
+        if improved:
+            state.best_eval_loss = selection_value
+            state.best_eval_step = step
+            no_improvement_evals = 0
+        elif not math.isnan(selection_value):
+            no_improvement_evals += 1
+        if (
+            not math.isnan(last_eval_value)
+            and not math.isnan(selection_value)
+            and selection_value > last_eval_value
+        ):
+            worsening_evals += 1
+        elif not math.isnan(selection_value):
+            worsening_evals = 0
+        last_eval_value = selection_value
+        payload["best_step_so_far"] = state.best_eval_step
+        if is_main_process():
+            if eval_payload_callback is not None:
+                extra_payload = eval_payload_callback(model, step, final_eval, state, metrics)
+                if extra_payload:
+                    payload.update(extra_payload)
+            print(json.dumps(payload))
+        _append_eval_history(payload)
+        best_path = None
+        if improved:
+            best_path = _save_best_checkpoint(step)
+            if best_path is not None and eval_control is not None and is_main_process():
+                selection_payload = {
+                    "stage": eval_control.stage_name,
+                    "step": step,
+                    "approx_epoch": _approx_epoch(step, initial_eval=initial_eval, final_eval=final_eval),
+                    "train_dataset_size": eval_control.train_dataset_size,
+                    "validation_dataset_size": eval_control.validation_dataset_size,
+                    "train_examples_seen": state.examples_seen,
+                    "validation_examples_evaluated": metrics.get(
+                        "examples_evaluated", eval_control.validation_dataset_size
+                    ),
+                    "metrics": metrics,
+                    "selection_metric": metric_key,
+                    "selection_value": selection_value,
+                    "previous_best_value": previous_best_value,
+                    "previous_best_step": previous_best_step,
+                    "replacement_reason": (
+                        "new best validation metric"
+                        if previous_best_value is not None
+                        else "first best validation checkpoint"
+                    ),
+                    "improvement_delta": (
+                        None
+                        if previous_best_value is None or math.isnan(selection_value)
+                        else previous_best_value - selection_value
+                    ),
+                    "best_step_so_far": state.best_eval_step,
+                    "qualitative_samples": payload.get("qualitative_samples"),
+                }
+                _write_selection_metadata(best_path, selection_payload)
+                candidate_name = f"candidate-step-{step:08d}"
+                candidate_path = checkpoint_manager.save_named(
+                    candidate_name,
+                    step=step,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    extra_state={
+                        "train_state": {
+                            "tokens_seen": state.tokens_seen,
+                            "examples_seen": state.examples_seen,
+                            "best_eval_loss": state.best_eval_loss,
+                            "best_eval_step": state.best_eval_step,
+                        }
+                    },
+                )
+                _write_selection_metadata(candidate_path, selection_payload)
+                update_topk_candidates(
+                    checkpoint_manager.output_dir,
+                    candidate_path=candidate_path,
+                    candidate_payload=selection_payload,
+                    metric_key=metric_key,
+                    limit=train_config.posttrain_top_k_checkpoints,
+                    lower_is_better=True,
+                )
+        if (
+            eval_control is not None
+            and eval_control.early_stopping_patience_evals is not None
+            and no_improvement_evals >= eval_control.early_stopping_patience_evals
+        ):
+            should_stop_training = True
+            if is_main_process():
+                print(
+                    f"WebbGPT: stopping {eval_control.stage_name} early after {no_improvement_evals} validation evals without a new best checkpoint.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        if (
+            eval_control is not None
+            and eval_control.overfit_train_loss_threshold is not None
+            and eval_control.overfit_worsening_patience is not None
+            and not math.isnan(last_train_loss)
+            and last_train_loss < eval_control.overfit_train_loss_threshold
+            and worsening_evals >= eval_control.overfit_worsening_patience
+        ):
+            should_stop_training = True
+            if is_main_process():
+                print(
+                    f"WebbGPT: stopping {eval_control.stage_name} early because training loss fell below "
+                    f"{eval_control.overfit_train_loss_threshold} while validation degraded for {worsening_evals} evals.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        last_eval_step = step
+
+    def _should_run_scheduled_eval(step: int) -> bool:
+        if val_loader is None:
+            return False
+        if eval_control is None:
+            return (
+                train_config.eval_every_steps > 0
+                and step > 0
+                and step % train_config.eval_every_steps == 0
+            )
+        if step <= 0:
+            return False
+        early_eval_due = eval_control.early_eval_step is not None and step == eval_control.early_eval_step
+        interval_due = (
+            eval_control.eval_interval_steps is not None
+            and eval_control.eval_interval_steps > 0
+            and step % eval_control.eval_interval_steps == 0
+        )
+        return early_eval_due or interval_due
+
+    if val_loader is not None and eval_control is not None and eval_control.evaluate_at_start:
+        _run_eval(0, final_eval=False, initial_eval=True)
+
+    while state.step < train_config.max_steps and not token_budget_reached and not should_stop_training:
+        for batch in train_loader:
+            if state.step >= train_config.max_steps or token_budget_reached or should_stop_training:
+                break
+            start_time = time.perf_counter()
+            batch = _to_device(batch, device)
+            with scaler_context:
+                outputs = model(**batch)
+                loss = outputs.loss / train_config.gradient_accumulation_steps
+            loss.backward()
+            tokens_this_batch = int(batch["attention_mask"].sum().item())
+            state.tokens_seen += tokens_this_batch
+            state.examples_seen += _infer_batch_size(batch)
+            micro_step += 1
+
+            if micro_step % train_config.gradient_accumulation_steps == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.max_grad_norm)
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+                last_train_loss = float(loss.item() * train_config.gradient_accumulation_steps)
+
+                if state.step % train_config.log_every_steps == 0 and is_main_process():
+                    elapsed = time.perf_counter() - start_time
+                    print(
+                        json.dumps(
+                            {
+                                "step": state.step,
+                                "loss": last_train_loss,
+                                "lr": float(scheduler.get_last_lr()[0]),
+                                "tokens_seen": state.tokens_seen,
+                                "step_time_sec": elapsed,
+                            }
+                        )
+                    )
+
+                if _should_run_scheduled_eval(state.step):
+                    _run_eval(state.step, final_eval=False)
+
+                if (
+                    train_config.checkpoint.save_every_steps > 0
+                    and state.step > 0
+                    and state.step % train_config.checkpoint.save_every_steps == 0
+                ):
+                    barrier()
+                    if is_main_process():
+                        checkpoint_manager.save(
+                            step=state.step,
+                            model=model,
+                            optimizer=optimizer,
+                            scheduler=scheduler,
+                            extra_state={
+                                "train_state": {
+                                    "tokens_seen": state.tokens_seen,
+                                    "examples_seen": state.examples_seen,
+                                    "best_eval_loss": state.best_eval_loss,
+                                    "best_eval_step": state.best_eval_step,
+                                }
+                            },
+                        )
+                        last_saved_step = state.step
+                    barrier()
+
+                state.step += 1
+                if (
+                    train_config.token_budget is not None
+                    and state.tokens_seen >= train_config.token_budget
+                ):
+                    token_budget_reached = True
+                    break
+
+    if eval_control is not None:
+        should_run_final_eval = (
+            val_loader is not None
+            and state.step > 0
+            and last_eval_step != state.step
+        )
+    else:
+        should_run_final_eval = (
+            val_loader is not None
+            and train_config.eval_every_steps > 0
+            and state.step > 0
+            and last_eval_step != state.step - 1
+        )
+    if should_run_final_eval:
+        _run_eval(state.step, final_eval=True)
+    if save_final_checkpoint and state.step > 0 and state.step != last_saved_step:
+        barrier()
+        if is_main_process():
+            checkpoint_manager.save(
+                step=state.step,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                extra_state={
+                    "train_state": {
+                        "tokens_seen": state.tokens_seen,
+                        "examples_seen": state.examples_seen,
+                        "best_eval_loss": state.best_eval_loss,
+                        "best_eval_step": state.best_eval_step,
+                    }
+                },
+            )
+        barrier()
+    return state

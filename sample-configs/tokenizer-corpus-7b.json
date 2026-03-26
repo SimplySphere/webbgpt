@@ -1,0 +1,13 @@
+{
+  "dataset_config_name": "sample-10BT",
+  "dataset_name": "HuggingFaceFW/fineweb-edu",
+  "max_characters": 500000000,
+  "max_documents": 2000000,
+  "min_document_chars": 128,
+  "normalize_whitespace": true,
+  "output_path": "data/raw/tokenizer_corpus_7b.txt",
+  "split": "train",
+  "streaming": true,
+  "text_field": "text",
+  "version": "1.0"
+}

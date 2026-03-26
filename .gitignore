@@ -1,0 +1,17 @@
+.DS_Store
+.venv/
+__pycache__/
+.cache/
+.hf-test-cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+artifacts/
+data/raw/
+build/
+dist/
+*.egg-info/
+*.pyc

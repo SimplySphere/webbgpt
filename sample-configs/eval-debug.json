@@ -1,0 +1,117 @@
+{
+  "batch_size": 8,
+  "benchmark_paths": [
+    "data/eval/chat_sanity.jsonl",
+    "data/eval/assistant.jsonl",
+    "data/eval/webb_course_present.responses",
+    "data/eval/webb_course_missing.responses",
+    "data/eval/webb_course_diff.responses",
+    "data/eval/webb_handbook_present.responses",
+    "data/eval/webb_handbook_missing.responses",
+    "data/eval/webb_faculty.responses",
+    "data/eval/webb_admissions.responses",
+    "data/eval/webb_student_life.responses",
+    "data/eval/webb_mission_values.responses",
+    "data/eval/webb_college_guidance.responses",
+    "data/eval/webb_museum_programs.responses",
+    "data/eval/webb_athletics_present.responses",
+    "data/eval/webb_athletics_missing.responses",
+    "data/eval/webb_planner.responses",
+    "data/eval/webb_mixed_multi_domain.responses"
+  ],
+  "compare_to_checkpoint": null,
+  "decode_preset": "eval",
+  "enforce_release_gates": false,
+  "grounding": {
+    "allow_ocr_fallback": false,
+    "dsn": "sqlite:///artifacts/grounding/webbgpt-debug.db",
+    "freshness_policy": {
+      "academic_publications": {
+        "cadence": "168h"
+      },
+      "admissions_general": {
+        "cadence": "24h"
+      },
+      "athletics": {
+        "active_season": "6h",
+        "off_season": "24h"
+      },
+      "college_guidance": {
+        "cadence": "24h"
+      },
+      "course_catalog": {
+        "cadence": "168h"
+      },
+      "faculty": {
+        "cadence": "24h"
+      },
+      "handbook_policy": {
+        "cadence": "168h"
+      },
+      "mission_values": {
+        "cadence": "168h"
+      },
+      "museum_programs": {
+        "cadence": "168h"
+      },
+      "student_life": {
+        "cadence": "24h"
+      }
+    },
+    "handbook_url": "https://webb.myschoolapp.com/ftpimages/823/download/download_10529422.pdf?_=1774412901890",
+    "legacy_catalog_input_path": null,
+    "planner_beta_enabled": true,
+    "route_fanout_limit": 2,
+    "seed_url_pack": "data/webb/seed_urls.json",
+    "snapshot_id": "latest",
+    "source_policy_path": "data/webb/source_policies.json",
+    "sync_families": [],
+    "sync_on_start": true,
+    "version": "1.0"
+  },
+  "max_new_tokens": 256,
+  "no_repeat_ngram_size": 4,
+  "release_gates": {
+    "assistant_pass_rate_min": 0.9,
+    "catalog_citation_rate_min": 1.0,
+    "catalog_exactness_min": 1.0,
+    "catalog_missing_abstention_min": 1.0,
+    "chat_sanity_pass_rate_min": 0.9,
+    "webb_admissions_exactness_min": 0.9,
+    "webb_athletics_missing_abstention_min": 1.0,
+    "webb_athletics_present_citation_rate_min": 0.9,
+    "webb_athletics_present_exactness_min": 0.9,
+    "webb_college_guidance_citation_rate_min": 0.9,
+    "webb_college_guidance_exactness_min": 0.85,
+    "webb_course_missing_abstention_min": 1.0,
+    "webb_course_present_citation_rate_min": 0.9,
+    "webb_course_present_exactness_min": 0.9,
+    "webb_faculty_exactness_min": 0.9,
+    "webb_handbook_missing_abstention_min": 1.0,
+    "webb_handbook_present_citation_rate_min": 0.9,
+    "webb_handbook_present_exactness_min": 0.9,
+    "webb_mission_values_citation_rate_min": 0.9,
+    "webb_mission_values_exactness_min": 0.85,
+    "webb_museum_programs_citation_rate_min": 0.9,
+    "webb_museum_programs_exactness_min": 0.85,
+    "webb_require_citable_handbook": true,
+    "webb_route_false_negative_rate_max": 0.05,
+    "webb_student_life_citation_rate_min": 0.9,
+    "webb_student_life_exactness_min": 0.85
+  },
+  "repetition_penalty": 1.05,
+  "require_citations": true,
+  "run_name": "webbgpt-eval",
+  "seed": 52,
+  "stop_strings": [
+    "</s>",
+    "<|assistant|>",
+    "<|user|>",
+    "<|system|>",
+    "<|tool|>",
+    "<|citation|>"
+  ],
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "version": "1.0"
+}

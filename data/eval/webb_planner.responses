@@ -1,0 +1,1 @@
+{"domain":"planner_advice","expected_route":"planner_advice","messages":[{"role":"user","content":"I'm overwhelmed at Webb with a sport and hard classes. Help me make a weekly plan."}],"expected_any_substrings":["general advice","webb","study"],"expects_abstention":false}

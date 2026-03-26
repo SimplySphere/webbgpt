@@ -1,0 +1,2 @@
+{"domain":"course_present","expected_route":"course_catalog","messages":[{"role":"user","content":"What is Honors Museum Research at Webb?"}],"expected_any_substrings":["museum","fossil","research"],"expects_abstention":false}
+{"domain":"course_present","expected_route":"course_catalog","messages":[{"role":"user","content":"What does Technology & Innovation Seminar cover at Webb?"}],"expected_any_substrings":["innovation","technical","project"],"expects_abstention":false}

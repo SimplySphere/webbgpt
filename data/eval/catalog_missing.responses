@@ -1,0 +1,6 @@
+{"messages": [{"role": "user", "content": "What are the prerequisites for BIO 404?"}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}
+{"messages": [{"role": "user", "content": "Tell me the current seats available for MATH 999."}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}
+{"messages": [{"role": "user", "content": "Does CS 404 exist in the catalog?"}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}
+{"messages": [{"role": "user", "content": "What is PHIL 404?"}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}
+{"messages": [{"role": "user", "content": "Can you confirm whether CS999 is offered this term?"}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}
+{"messages": [{"role": "user", "content": "What are the prerequisites for BIO404 this fall?"}], "expected_course_codes": [], "expects_abstention": true, "requires_citation": false}

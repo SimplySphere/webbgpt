@@ -1,0 +1,19 @@
+{
+  "rules": [
+    {"contains": "/academics/course-catalog", "page_type": "course"},
+    {"contains": "curriculum-detail", "page_type": "course"},
+    {"contains": "/academics/meet-our-faculty", "page_type": "faculty"},
+    {"contains": "/about/directory", "page_type": "faculty"},
+    {"contains": "/admission/", "page_type": "admissions"},
+    {"contains": "/about/publications", "page_type": "publication"},
+    {"contains": "/student-life/", "page_type": "student_life"},
+    {"contains": "/about/culture-and-community", "page_type": "student_life"},
+    {"contains": "/about/mission", "page_type": "mission_values"},
+    {"contains": "/academics/college-guidance", "page_type": "college_guidance"},
+    {"contains": "/college-guidance-profile-", "page_type": "college_guidance"},
+    {"contains": "/academics/alf-museum", "page_type": "museum_programs"},
+    {"contains": "/academics/unique-learning-experiences", "page_type": "museum_programs"},
+    {"contains": "/athletics", "page_type": "athletics"},
+    {"contains": "/athletic-teams", "page_type": "athletics"}
+  ]
+}

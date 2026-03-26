@@ -1,0 +1,2 @@
+{"domain":"mixed_multi_domain","expected_routes":["admissions_general","student_life"],"messages":[{"role":"user","content":"I'm applying to Webb and want to know about dorm life too."}],"expected_any_substrings":["application","dorm"],"expects_abstention":false}
+{"domain":"mixed_multi_domain","expected_routes":["course_catalog","athletics"],"messages":[{"role":"user","content":"I want to play tennis at Webb and also know what computer science classes are offered."}],"expected_any_substrings":["girls tennis","advanced courses in computer science"],"expects_abstention":false}
