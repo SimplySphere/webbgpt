@@ -6,7 +6,7 @@ def test_build_progress_snapshot_formats_estimated_completion():
 
     assert snapshot.fraction_complete == 0.5
     assert snapshot.remaining_seconds == 30.0
-    assert snapshot.summary == "50.0% · 00:00:30 elapsed · 00:00:30 left"
+    assert snapshot.summary == "50.0% | 00:00:30 elapsed | 00:00:30 left"
 
 
 def test_build_progress_snapshot_handles_unknown_totals():
@@ -14,4 +14,4 @@ def test_build_progress_snapshot_handles_unknown_totals():
 
     assert snapshot.fraction_complete is None
     assert snapshot.remaining_seconds is None
-    assert snapshot.summary == "??.?% · 00:00:15 elapsed · --:--:-- left"
+    assert snapshot.summary == "??.?% | 00:00:15 elapsed | --:--:-- left"

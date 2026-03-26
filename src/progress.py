@@ -67,7 +67,7 @@ def format_progress_summary(
         fraction,
     )
     percent_text = UNKNOWN_PERCENT_TEXT if fraction is None else f"{fraction * 100.0:.1f}%"
-    return f"{percent_text} · {format_clock(elapsed_seconds)} elapsed · {format_clock(remaining)} left"
+    return f"{percent_text} | {format_clock(elapsed_seconds)} elapsed | {format_clock(remaining)} left"
 
 
 def build_progress_snapshot(
