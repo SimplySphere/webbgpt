@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Iterable
 
 from config import TokenizerConfig
+from progress import format_progress_summary
 
 
 def _require_sentencepiece():
@@ -25,13 +27,81 @@ class SentencePieceTokenizer:
         spm = _require_sentencepiece()
         self.model_path = str(model_path)
         self.processor = spm.SentencePieceProcessor(model_file=self.model_path)
+        self.special_tokens = self._load_special_tokens()
+        self._special_token_to_id = {
+            token: int(self.processor.piece_to_id(token))
+            for token in self.special_tokens
+            if int(self.processor.piece_to_id(token)) >= 0
+        }
+        self._special_tokens_sorted = sorted(self._special_token_to_id.keys(), key=len, reverse=True)
 
     @property
     def vocab_size(self) -> int:
         return int(self.processor.vocab_size())
 
+    @property
+    def bos_token_id(self) -> int:
+        return int(self.processor.bos_id())
+
+    @property
+    def eos_token_id(self) -> int:
+        return int(self.processor.eos_id())
+
+    @property
+    def pad_token_id(self) -> int:
+        return int(self.processor.pad_id())
+
+    def _load_special_tokens(self) -> list[str]:
+        meta_path = Path(self.model_path).with_suffix(".tokenizer.json")
+        if meta_path.exists():
+            try:
+                payload = json.loads(meta_path.read_text())
+                special_tokens = list((payload.get("special_tokens") or {}).values())
+                if special_tokens:
+                    return special_tokens
+            except Exception:
+                pass
+        return list(TokenizerConfig().special_tokens.values())
+
+    def _encode_plain(self, text: str) -> list[int]:
+        if not text:
+            return []
+        return list(self.processor.encode(text, out_type=int, add_bos=False, add_eos=False))
+
     def encode(self, text: str, add_bos: bool = False, add_eos: bool = False) -> list[int]:
-        return list(self.processor.encode(text, out_type=int, add_bos=add_bos, add_eos=add_eos))
+        token_ids: list[int] = []
+        if add_bos and self.bos_token_id >= 0:
+            token_ids.append(self.bos_token_id)
+
+        index = 0
+        while index < len(text):
+            matched = False
+            for token in self._special_tokens_sorted:
+                if text.startswith(token, index):
+                    token_ids.append(self._special_token_to_id[token])
+                    index += len(token)
+                    matched = True
+                    break
+            if matched:
+                continue
+
+            next_special_index = min(
+                (
+                    position
+                    for token in self._special_tokens_sorted
+                    if (position := text.find(token, index)) != -1
+                ),
+                default=-1,
+            )
+            if next_special_index == -1:
+                token_ids.extend(self._encode_plain(text[index:]))
+                break
+            token_ids.extend(self._encode_plain(text[index:next_special_index]))
+            index = next_special_index
+
+        if add_eos and self.eos_token_id >= 0:
+            token_ids.append(self.eos_token_id)
+        return token_ids
 
     def decode(self, ids: Iterable[int]) -> str:
         return str(self.processor.decode(list(ids)))
@@ -65,10 +135,11 @@ def _format_bytes(num_bytes: int) -> str:
     return f"{num_bytes} B"
 
 
-def _heartbeat(stop_event: threading.Event, interval_seconds: float) -> None:
+def _heartbeat(stop_event: threading.Event, interval_seconds: float, start_time: float) -> None:
     while not stop_event.wait(interval_seconds):
         print(
-            "WebbGPT: tokenizer training is still running. SentencePiece can stay quiet for long stretches during BPE optimization.",
+            "WebbGPT: tokenizer training is still running. SentencePiece can stay quiet for long stretches during BPE optimization. "
+            f"[{format_progress_summary(fraction_complete=None, elapsed_seconds=time.monotonic() - start_time)}]",
             file=sys.stderr,
             flush=True,
         )
@@ -116,15 +187,17 @@ def train_tokenizer(
     }
     command = " ".join(f"--{key}={value}" for key, value in args.items())
     existing_files, total_bytes = _describe_input_files(input_files)
+    stage_start_time = time.monotonic()
     print(
         "WebbGPT: starting tokenizer training "
         f"on {existing_files} file(s), {_format_bytes(total_bytes)} total. "
-        "SentencePiece may go quiet for a while after its initial logs; that is normal.",
+        "SentencePiece may go quiet for a while after its initial logs; that is normal. "
+        f"[{format_progress_summary(fraction_complete=None, elapsed_seconds=0.0)}]",
         file=sys.stderr,
         flush=True,
     )
     stop_event = threading.Event()
-    heartbeat = threading.Thread(target=_heartbeat, args=(stop_event, 20.0), daemon=True)
+    heartbeat = threading.Thread(target=_heartbeat, args=(stop_event, 20.0, stage_start_time), daemon=True)
     heartbeat.start()
     try:
         spm.SentencePieceTrainer.Train(command)
@@ -156,7 +229,8 @@ def train_tokenizer(
     meta_path = model_prefix.with_suffix(".tokenizer.json")
     meta_path.write_text(json.dumps(config.to_dict(), indent=2))
     print(
-        f"WebbGPT: tokenizer training finished. Wrote {model_prefix.with_suffix('.model')} and {meta_path}.",
+        f"WebbGPT: tokenizer training finished. Wrote {model_prefix.with_suffix('.model')} and {meta_path}. "
+        f"[{format_progress_summary(fraction_complete=1.0, elapsed_seconds=time.monotonic() - stage_start_time, remaining_seconds=0.0)}]",
         file=sys.stderr,
         flush=True,
     )

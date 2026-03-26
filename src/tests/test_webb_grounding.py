@@ -16,6 +16,23 @@ SOURCE_POLICIES = "data/webb/source_policies.json"
 HANDBOOK_PATH = "data/webb/mock/handbook.txt"
 
 
+def test_webb_demo_fixtures_follow_structured_fixture_standard():
+    payload = json.loads(Path(DEMO_SEED_PACK).read_text())
+    assert payload["fixture_schema_version"] == 2
+
+    local_entries = [entry for entry in payload["entries"] if str(entry.get("url", "")).startswith("data/webb/mock/")]
+    assert local_entries
+    for entry in local_entries:
+        assert entry["source_kind"] == "fixture"
+        if entry["url"].endswith(".html"):
+            assert entry["fixture_format"] == "structured_html"
+
+    for path in Path("data/webb/mock").glob("*.html"):
+        text = path.read_text()
+        assert "<pre>" not in text
+        assert '<script type="application/json">' in text
+
+
 def test_webb_sync_populates_snapshot_and_queries(tmp_path: Path):
     dsn = f"sqlite:///{tmp_path / 'webb.db'}"
     result = webb_sync(
@@ -28,6 +45,8 @@ def test_webb_sync_populates_snapshot_and_queries(tmp_path: Path):
     )
     assert result["snapshot_id"]
     assert result["quality"]["handbook_citable"] is True
+    assert result["site"]["course_versions_ingested"] == result["families"]["course_catalog"]["rows"]["course_versions"]
+    assert result["site"]["faculty_profiles_ingested"] == result["families"]["faculty"]["rows"]["faculty_profiles"]
 
     store = WebbKnowledgeStore(dsn)
     provider = WebbGroundingProvider(store)

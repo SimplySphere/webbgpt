@@ -3,153 +3,222 @@
     {
       "url": "data/webb/mock/course_catalog_2025_26.html",
       "page_type": "course",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/fine_arts_2026_27.html",
       "page_type": "course",
       "department": "Fine Arts",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/health_wellness_2026_27.html",
       "page_type": "course",
       "department": "Health & Wellness",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/humanities_2026_27.html",
       "page_type": "course",
       "department": "Humanities",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/mathematics_computer_science_2026_27.html",
       "page_type": "course",
       "department": "Mathematics & Computer Science",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/science_2026_27.html",
       "page_type": "course",
       "department": "Science",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/world_languages_2026_27.html",
       "page_type": "course",
       "department": "World Languages",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/faculty.html",
-      "page_type": "faculty"
+      "page_type": "faculty",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/directory.html",
-      "page_type": "faculty"
+      "page_type": "faculty",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/admissions.html",
-      "page_type": "admissions"
+      "page_type": "admissions",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/how_to_apply.html",
-      "page_type": "admissions"
+      "page_type": "admissions",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/tuition_financial_aid.html",
-      "page_type": "admissions"
+      "page_type": "admissions",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/student_life.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/culture_and_community.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/dining.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/dorm_life.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/after_school_and_weekends.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/health_and_wellness.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/travel_opportunities.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/community_impact.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/clubs_affinity_groups.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/student_leadership.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/chapel_program.html",
-      "page_type": "student_life"
+      "page_type": "student_life",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/about.html",
-      "page_type": "mission_values"
+      "page_type": "mission_values",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/mission_values.html",
-      "page_type": "mission_values"
+      "page_type": "mission_values",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/college_guidance.html",
-      "page_type": "college_guidance"
+      "page_type": "college_guidance",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/college_guidance_profile_2024_25.html",
-      "page_type": "college_guidance"
+      "page_type": "college_guidance",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/alf_museum.html",
-      "page_type": "museum_programs"
+      "page_type": "museum_programs",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/unique_learning_experiences.html",
-      "page_type": "museum_programs"
+      "page_type": "museum_programs",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/athletics.html",
       "page_type": "athletics",
-      "school_year": "2025-26"
+      "school_year": "2025-26",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/athletics_school_records.html",
-      "page_type": "athletics"
+      "page_type": "athletics",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/athletics_cif_championships.html",
-      "page_type": "athletics"
+      "page_type": "athletics",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/athletics_league_championships.html",
-      "page_type": "athletics"
+      "page_type": "athletics",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     },
     {
       "url": "data/webb/mock/publications.html",
       "page_type": "publication",
-      "school_year": "2026-27"
+      "school_year": "2026-27",
+      "source_kind": "fixture",
+      "fixture_format": "structured_html"
     }
-  ]
+  ],
+  "fixture_schema_version": 2
 }

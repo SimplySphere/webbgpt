@@ -208,6 +208,9 @@ def test_run_training_emits_final_eval_for_short_token_budget_stage(monkeypatch,
     assert len(eval_calls) == 1
     assert payloads[-1]["final_eval"] is True
     assert payloads[-1]["step"] == 2
+    assert "progress_summary" in payloads[-1]
+    assert "elapsed" in payloads[-1]["progress_summary"]
+    assert "left" in payloads[-1]["progress_summary"]
 
 
 def test_run_training_merges_eval_payload_and_saves_best_checkpoint(monkeypatch, capsys):
@@ -310,3 +313,8 @@ def test_run_training_merges_eval_payload_and_saves_best_checkpoint(monkeypatch,
     assert payloads[-1]["final_eval"] is True
     assert payloads[-1]["qualitative_samples"] == [{"prompt": "p6", "raw_response": "r", "clean_response": "r"}]
     assert payloads[-1]["final_eval_seen"] is True
+    train_payloads = [json.loads(line) for line in stdout_lines if '"loss"' in line and '"eval"' not in line]
+    assert train_payloads
+    assert "tokens_seen" in train_payloads[0]
+    assert "step_time_sec" in train_payloads[0]
+    assert "progress_summary" in train_payloads[0]

@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 from config import TokenizerCorpusConfig
+from progress import build_progress_snapshot
 
 
 WHITESPACE_RE = re.compile(r"\s+")
@@ -33,9 +35,20 @@ def build_tokenizer_corpus(config: TokenizerCorpusConfig) -> dict[str, int | str
     load_dataset = _require_datasets()
     output_path = Path(config.output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    stage_start_time = time.monotonic()
+    documents_written = 0
+    characters_written = 0
+
+    def _stage_summary() -> str:
+        return build_progress_snapshot(
+            time.monotonic() - stage_start_time,
+            (documents_written, config.max_documents),
+            (characters_written, config.max_characters),
+        ).summary
+
     _progress(
         f"WebbGPT: building tokenizer corpus from {config.dataset_name} "
-        f"({config.dataset_config_name}, split={config.split})."
+        f"({config.dataset_config_name}, split={config.split}). [{_stage_summary()}]"
     )
 
     dataset = load_dataset(
@@ -44,9 +57,6 @@ def build_tokenizer_corpus(config: TokenizerCorpusConfig) -> dict[str, int | str
         split=config.split,
         streaming=config.streaming,
     )
-
-    documents_written = 0
-    characters_written = 0
 
     with output_path.open("w", encoding="utf-8") as handle:
         for row in dataset:
@@ -66,7 +76,8 @@ def build_tokenizer_corpus(config: TokenizerCorpusConfig) -> dict[str, int | str
             if documents_written % 10000 == 0:
                 _progress(
                     f"WebbGPT: tokenizer corpus build is still running "
-                    f"({documents_written:,} documents, {characters_written:,} characters written)."
+                    f"({documents_written:,} documents, {characters_written:,} characters written). "
+                    f"[{_stage_summary()}]"
                 )
 
             if documents_written >= config.max_documents:
@@ -88,6 +99,6 @@ def build_tokenizer_corpus(config: TokenizerCorpusConfig) -> dict[str, int | str
     output_path.with_suffix(output_path.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2))
     _progress(
         f"WebbGPT: tokenizer corpus build finished "
-        f"({documents_written:,} documents, {characters_written:,} characters)."
+        f"({documents_written:,} documents, {characters_written:,} characters). [{_stage_summary()}]"
     )
     return metadata

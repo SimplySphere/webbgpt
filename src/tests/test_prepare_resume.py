@@ -125,6 +125,36 @@ def test_prepare_stage_reuses_completed_manifest(tmp_path: Path, tokenizer_path:
     assert shard_path.stat().st_mtime_ns == shard_mtime
 
 
+def test_prepare_stage_treats_empty_output_file_as_fresh_target(tmp_path: Path, tokenizer_path: str):
+    text_path = _make_text_file(
+        tmp_path / "docs.txt",
+        [
+            "WebbGPT helps students think through course planning and requirements.",
+            "Course catalogs describe prerequisites, credits, and scheduling expectations.",
+            "Academic advising conversations should stay clear, grounded, and understandable.",
+        ],
+    )
+    config = _base_config(tokenizer_path)
+    config.pretrain_sources = [
+        DataSourceConfig(
+            name="docs",
+            path=text_path,
+            format="text",
+            quality_filter=False,
+            deduplicate=False,
+            pii_scrub=False,
+        )
+    ]
+    builder = DatasetBuilder(config)
+    output_path = tmp_path / "pretrain.json"
+    output_path.write_text("")
+
+    manifest = builder.prepare_stage("pretrain", str(output_path))
+
+    assert manifest["kind"] == "packed_lm"
+    assert output_path.read_text().strip().startswith("{")
+
+
 def test_prepare_stage_fails_for_legacy_partial_outputs(tmp_path: Path, tokenizer_path: str):
     text_path = _make_text_file(tmp_path / "docs.txt", ["alpha beta gamma delta epsilon"] * 4)
     config = _base_config(tokenizer_path)

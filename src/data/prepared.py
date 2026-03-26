@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
+from progress import build_progress_snapshot
 from tokenizer import SentencePieceTokenizer, format_chat
 
 
@@ -307,11 +308,19 @@ def write_packed_lm_artifacts(
     num_sequences = 0
     num_tokens = 0
     last_heartbeat = time.monotonic()
+    stage_start_time = time.monotonic()
+
+    def _stage_summary() -> str:
+        return build_progress_snapshot(
+            time.monotonic() - stage_start_time,
+            (num_tokens, token_budget),
+        ).summary
 
     budget_text = "unbounded" if token_budget is None else f"{token_budget:,} tokens"
     _progress(
         f"WebbGPT: preparing {stage} packed LM artifacts "
-        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard}, token_budget={budget_text})."
+        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard}, token_budget={budget_text}). "
+        f"[{_stage_summary()}]"
     )
 
     for sequence in token_sequences:
@@ -329,7 +338,7 @@ def write_packed_lm_artifacts(
             )
             _progress(
                 f"WebbGPT: preparing {stage}: wrote shard {shard_index + 1} "
-                f"({num_sequences:,} sequences, {num_tokens:,} packed tokens so far)."
+                f"({num_sequences:,} sequences, {num_tokens:,} packed tokens so far). [{_stage_summary()}]"
             )
             rows = []
             shard_index += 1
@@ -339,7 +348,8 @@ def write_packed_lm_artifacts(
         if now - last_heartbeat >= 30:
             _progress(
                 f"WebbGPT: preparing {stage} is still running "
-                f"({num_sequences:,} sequences, {num_tokens:,} packed tokens, {len(shards):,} shards written)."
+                f"({num_sequences:,} sequences, {num_tokens:,} packed tokens, {len(shards):,} shards written). "
+                f"[{_stage_summary()}]"
             )
             last_heartbeat = now
 
@@ -354,7 +364,7 @@ def write_packed_lm_artifacts(
         )
         _progress(
             f"WebbGPT: preparing {stage}: wrote final shard {shard_index + 1} "
-            f"({num_sequences:,} sequences, {num_tokens:,} packed tokens total)."
+            f"({num_sequences:,} sequences, {num_tokens:,} packed tokens total). [{_stage_summary()}]"
         )
 
     manifest = {
@@ -374,7 +384,8 @@ def write_packed_lm_artifacts(
     save_prepared_manifest(manifest_path, manifest)
     _progress(
         f"WebbGPT: finished preparing {stage} "
-        f"({num_sequences:,} sequences across {len(shards):,} shards, {num_tokens:,} packed tokens)."
+        f"({num_sequences:,} sequences across {len(shards):,} shards, {num_tokens:,} packed tokens). "
+        f"[{_stage_summary()}]"
     )
     return manifest
 
@@ -402,10 +413,18 @@ def write_sft_artifacts(
     num_examples = 0
     num_label_tokens = 0
     last_heartbeat = time.monotonic()
+    stage_start_time = time.monotonic()
+    total_examples = len(examples) if hasattr(examples, "__len__") else None
+
+    def _stage_summary() -> str:
+        return build_progress_snapshot(
+            time.monotonic() - stage_start_time,
+            (num_examples, total_examples),
+        ).summary
 
     _progress(
         f"WebbGPT: preparing {stage} SFT artifacts "
-        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard})."
+        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard}). [{_stage_summary()}]"
     )
 
     for messages in examples:
@@ -432,7 +451,7 @@ def write_sft_artifacts(
             )
             _progress(
                 f"WebbGPT: preparing {stage}: wrote shard {shard_index + 1} "
-                f"({num_examples:,} examples, {num_label_tokens:,} supervised tokens so far)."
+                f"({num_examples:,} examples, {num_label_tokens:,} supervised tokens so far). [{_stage_summary()}]"
             )
             input_rows = []
             label_rows = []
@@ -441,7 +460,8 @@ def write_sft_artifacts(
         if now - last_heartbeat >= 30:
             _progress(
                 f"WebbGPT: preparing {stage} is still running "
-                f"({num_examples:,} examples, {num_label_tokens:,} supervised tokens, {len(shards):,} shards written)."
+                f"({num_examples:,} examples, {num_label_tokens:,} supervised tokens, {len(shards):,} shards written). "
+                f"[{_stage_summary()}]"
             )
             last_heartbeat = now
 
@@ -463,7 +483,7 @@ def write_sft_artifacts(
         )
         _progress(
             f"WebbGPT: preparing {stage}: wrote final shard {shard_index + 1} "
-            f"({num_examples:,} examples total)."
+            f"({num_examples:,} examples total). [{_stage_summary()}]"
         )
 
     manifest = {
@@ -482,7 +502,8 @@ def write_sft_artifacts(
     save_prepared_manifest(manifest_path, manifest)
     _progress(
         f"WebbGPT: finished preparing {stage} "
-        f"({num_examples:,} examples across {len(shards):,} shards, {num_label_tokens:,} supervised tokens)."
+        f"({num_examples:,} examples across {len(shards):,} shards, {num_label_tokens:,} supervised tokens). "
+        f"[{_stage_summary()}]"
     )
     return manifest
 
@@ -509,10 +530,18 @@ def write_preference_artifacts(
     shard_index = 0
     num_examples = 0
     last_heartbeat = time.monotonic()
+    stage_start_time = time.monotonic()
+    total_examples = len(examples) if hasattr(examples, "__len__") else None
+
+    def _stage_summary() -> str:
+        return build_progress_snapshot(
+            time.monotonic() - stage_start_time,
+            (num_examples, total_examples),
+        ).summary
 
     _progress(
         f"WebbGPT: preparing {stage} preference artifacts "
-        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard})."
+        f"(sequence_length={sequence_length}, rows_per_shard={rows_per_shard}). [{_stage_summary()}]"
     )
 
     for prompt, chosen, rejected in examples:
@@ -537,7 +566,7 @@ def write_preference_artifacts(
             )
             _progress(
                 f"WebbGPT: preparing {stage}: wrote shard {shard_index + 1} "
-                f"({num_examples:,} preference examples so far)."
+                f"({num_examples:,} preference examples so far). [{_stage_summary()}]"
             )
             chosen_rows = []
             rejected_rows = []
@@ -546,7 +575,7 @@ def write_preference_artifacts(
         if now - last_heartbeat >= 30:
             _progress(
                 f"WebbGPT: preparing {stage} is still running "
-                f"({num_examples:,} preference examples, {len(shards):,} shards written)."
+                f"({num_examples:,} preference examples, {len(shards):,} shards written). [{_stage_summary()}]"
             )
             last_heartbeat = now
 
@@ -568,7 +597,7 @@ def write_preference_artifacts(
         )
         _progress(
             f"WebbGPT: preparing {stage}: wrote final shard {shard_index + 1} "
-            f"({num_examples:,} preference examples total)."
+            f"({num_examples:,} preference examples total). [{_stage_summary()}]"
         )
 
     manifest = {
@@ -586,7 +615,7 @@ def write_preference_artifacts(
     save_prepared_manifest(manifest_path, manifest)
     _progress(
         f"WebbGPT: finished preparing {stage} "
-        f"({num_examples:,} examples across {len(shards):,} shards)."
+        f"({num_examples:,} examples across {len(shards):,} shards). [{_stage_summary()}]"
     )
     return manifest
 

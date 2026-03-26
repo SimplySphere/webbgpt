@@ -12,6 +12,7 @@ from typing import Any
 
 from config import TrainConfig
 from posttrain.eval import update_topk_candidates
+from progress import build_progress_snapshot
 from train.checkpoint import CheckpointManager
 from train.distributed import barrier, is_main_process
 
@@ -150,6 +151,7 @@ def run_training(
     save_final_checkpoint: bool = False,
 ) -> TrainState:
     torch, _, _ = _require_torch()
+    stage_start_time = time.perf_counter()
     state = TrainState()
     last_saved_step = -1
     last_eval_step = -1
@@ -225,6 +227,16 @@ def run_training(
         selection_path = best_path / "selection.json"
         selection_path.write_text(json.dumps(payload, indent=2))
 
+    def _stage_progress(completed_steps: int | None = None):
+        return build_progress_snapshot(
+            time.perf_counter() - stage_start_time,
+            (
+                state.step if completed_steps is None else completed_steps,
+                train_config.max_steps,
+            ),
+            (state.tokens_seen, train_config.token_budget),
+        )
+
     def _run_eval(step: int, *, final_eval: bool, initial_eval: bool = False) -> None:
         nonlocal last_eval_step, last_eval_value, no_improvement_evals, worsening_evals, should_stop_training
         evaluator = eval_fn or evaluate_language_model
@@ -247,6 +259,13 @@ def run_training(
             payload["validation_examples_evaluated"] = metrics.get(
                 "examples_evaluated", eval_control.validation_dataset_size
             )
+        progress = _stage_progress(completed_steps=min(max(step, 0), train_config.max_steps))
+        payload["progress_percent"] = (
+            None if progress.fraction_complete is None else round(progress.fraction_complete * 100.0, 1)
+        )
+        payload["stage_elapsed_sec"] = round(progress.elapsed_seconds, 3)
+        payload["stage_eta_sec"] = None if progress.remaining_seconds is None else round(progress.remaining_seconds, 3)
+        payload["progress_summary"] = progress.summary
         improved = (
             not math.isnan(float(metrics.get((eval_control.eval_metric_key if eval_control else "loss"), math.nan)))
             and float(metrics.get((eval_control.eval_metric_key if eval_control else "loss"), math.nan))
@@ -345,8 +364,10 @@ def run_training(
         ):
             should_stop_training = True
             if is_main_process():
+                progress = _stage_progress()
                 print(
-                    f"WebbGPT: stopping {eval_control.stage_name} early after {no_improvement_evals} validation evals without a new best checkpoint.",
+                    f"WebbGPT: stopping {eval_control.stage_name} early after {no_improvement_evals} validation evals without a new best checkpoint. "
+                    f"[{progress.summary}]",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -360,9 +381,11 @@ def run_training(
         ):
             should_stop_training = True
             if is_main_process():
+                progress = _stage_progress()
                 print(
                     f"WebbGPT: stopping {eval_control.stage_name} early because training loss fell below "
-                    f"{eval_control.overfit_train_loss_threshold} while validation degraded for {worsening_evals} evals.",
+                    f"{eval_control.overfit_train_loss_threshold} while validation degraded for {worsening_evals} evals. "
+                    f"[{progress.summary}]",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -414,6 +437,7 @@ def run_training(
 
                 if state.step % train_config.log_every_steps == 0 and is_main_process():
                     elapsed = time.perf_counter() - start_time
+                    progress = _stage_progress(completed_steps=min(state.step + 1, train_config.max_steps))
                     print(
                         json.dumps(
                             {
@@ -422,6 +446,16 @@ def run_training(
                                 "lr": float(scheduler.get_last_lr()[0]),
                                 "tokens_seen": state.tokens_seen,
                                 "step_time_sec": elapsed,
+                                "progress_percent": (
+                                    None
+                                    if progress.fraction_complete is None
+                                    else round(progress.fraction_complete * 100.0, 1)
+                                ),
+                                "stage_elapsed_sec": round(progress.elapsed_seconds, 3),
+                                "stage_eta_sec": (
+                                    None if progress.remaining_seconds is None else round(progress.remaining_seconds, 3)
+                                ),
+                                "progress_summary": progress.summary,
                             }
                         )
                     )

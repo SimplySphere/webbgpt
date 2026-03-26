@@ -1,4 +1,8 @@
-from data.prepared import encode_sft_messages
+from pathlib import Path
+
+from config import TokenizerConfig
+from data.prepared import encode_preference_example, encode_sft_messages
+from tokenizer.spm import SentencePieceTokenizer, train_tokenizer
 
 
 class FakeTokenizer:
@@ -71,3 +75,50 @@ def test_encode_sft_messages_masks_non_assistant_tokens():
     assert first_labeled_index >= assistant_token_positions[0] + len(assistant_prefix)
     assert any(value != -100 for value in labels[first_labeled_index:])
     assert all(value == -100 for value in labels[:assistant_token_positions[0] + len(assistant_prefix)])
+
+
+def _train_real_tokenizer(tmp_path: Path) -> SentencePieceTokenizer:
+    corpus_path = tmp_path / "corpus.txt"
+    corpus_path.write_text(
+        "\n".join(
+            [
+                "WebbGPT explains courses and planning clearly.",
+                "Students benefit from grounded answers and honest uncertainty.",
+                "Preference tuning should reward helpful chosen responses.",
+                "Good assistant messages should end cleanly.",
+            ]
+        )
+        + "\n"
+    )
+    model_path = train_tokenizer(
+        [str(corpus_path)],
+        TokenizerConfig(
+            model_prefix=str(tmp_path / "test-tokenizer"),
+            vocab_size=320,
+            sample_input_sentence_size=1000,
+            max_sentence_length=2048,
+        ),
+    )
+    return SentencePieceTokenizer(model_path)
+
+
+def test_real_sentencepiece_tokenizer_encodes_literal_eos_as_special_id(tmp_path: Path):
+    tokenizer = _train_real_tokenizer(tmp_path)
+
+    token_ids = tokenizer.encode("<|assistant|>\nhello\n</s>", add_bos=True, add_eos=False)
+
+    assert tokenizer.token_to_id("<|assistant|>") in token_ids
+    assert tokenizer.token_to_id("</s>") in token_ids
+
+
+def test_encode_preference_example_appends_real_eos_token(tmp_path: Path):
+    tokenizer = _train_real_tokenizer(tmp_path)
+
+    token_ids = encode_preference_example(
+        [{"role": "user", "content": "Say hi"}],
+        "Hi there.",
+        tokenizer,
+        sequence_length=64,
+    )
+
+    assert tokenizer.token_to_id("</s>") in token_ids

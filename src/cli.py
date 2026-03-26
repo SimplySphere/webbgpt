@@ -2871,16 +2871,6 @@ def _run_main_pipeline(
     remote_preset: str = "full",
     force_rebuild: bool = False,
 ) -> int:
-    from data.dataset import DatasetBuilder
-    from eval.runner import run_evaluation
-    from export.hf import export_hf_checkpoint
-    from grounding.ingest import webb_sync
-    from posttrain.dpo import run_dpo_job
-    from posttrain.sft import run_sft_job
-    from serve.app import run_server
-    from tokenizer.spm import train_tokenizer
-    from train.entrypoints import run_continued_pretraining, run_pretraining
-
     base = Path(output_dir)
     config_paths = _require_profile_configs(base, profile)
     tokenizer_config = load_config(config_paths["tokenizer"], TokenizerConfig)
@@ -2942,6 +2932,16 @@ def _run_main_pipeline(
         )
 
     _validate_profile_hardware_fit(profile, model_config)
+
+    from data.dataset import DatasetBuilder
+    from eval.runner import run_evaluation
+    from export.hf import export_hf_checkpoint
+    from grounding.ingest import webb_sync
+    from posttrain.dpo import run_dpo_job
+    from posttrain.sft import run_sft_job
+    from serve.app import run_server
+    from tokenizer.spm import train_tokenizer
+    from train.entrypoints import run_continued_pretraining, run_pretraining
 
     runtime_root = _profile_artifact_root(profile)
     prepared_root = runtime_root / "prepared"

@@ -313,6 +313,29 @@ def _record_family_metric(
     entry["rows"] = rows
 
 
+def _set_family_row_metric(
+    family_metadata: dict[str, dict[str, Any]],
+    family: str,
+    key: str,
+    amount: int,
+) -> None:
+    entry = family_metadata.setdefault(
+        family,
+        {
+            "refreshed": False,
+            "carried_forward": False,
+            "documents": 0,
+            "chunks": 0,
+            "rows": {},
+            "freshness_policy": DEFAULT_FAMILY_FRESHNESS.get(family, {}),
+        },
+    )
+    entry["refreshed"] = True
+    rows = dict(entry.get("rows") or {})
+    rows[key] = int(amount)
+    entry["rows"] = rows
+
+
 def _school_year(entry: dict[str, Any], page_title: str, text: str) -> str | None:
     for source in (entry.get("school_year"), page_title, text):
         match = SCHOOL_YEAR_RE.search(str(source or ""))
@@ -551,6 +574,24 @@ def _dedupe_course_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = (str(row.get("snapshot_id") or ""), str(row.get("course_key") or ""), row.get("school_year"))
         current = deduped.get(key)
         if current is None or _course_row_quality(row) > _course_row_quality(current):
+            deduped[key] = row
+    return list(deduped.values())
+
+
+def _faculty_row_quality(row: dict[str, Any]) -> tuple[int, int, int]:
+    return (
+        len(_normalize_space(row.get("bio"))),
+        len(_normalize_space(row.get("role_title"))),
+        len(_normalize_space(row.get("department"))),
+    )
+
+
+def _dedupe_faculty_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("snapshot_id") or ""), str(row.get("faculty_key") or ""))
+        current = deduped.get(key)
+        if current is None or _faculty_row_quality(row) > _faculty_row_quality(current):
             deduped[key] = row
     return list(deduped.values())
 
@@ -890,7 +931,15 @@ def ingest_webb_site(
             page_title=page_title,
             text=text,
             school_year=school_year,
-            raw_payload={"script_payload_count": len(payloads)},
+            raw_payload={
+                "script_payload_count": len(payloads),
+                "heading_count": len(headings),
+                "structured_source": bool(payloads),
+                "source_kind": entry.get("source_kind"),
+                "fixture_format": entry.get("fixture_format"),
+                "seed_page_type": entry.get("page_type"),
+                "entry_department": entry.get("department"),
+            },
         )
         documents.append(document_row)
         family_chunks = _build_chunk_rows(document_row, headings)
@@ -973,8 +1022,11 @@ def ingest_webb_site(
     store.upsert_retrieval_chunks(chunks)
     if courses:
         courses = _dedupe_course_rows(courses)
+        _set_family_row_metric(family_metadata, "course_catalog", "course_versions", len(courses))
         store.upsert_course_versions(courses)
     if faculty:
+        faculty = _dedupe_faculty_rows(faculty)
+        _set_family_row_metric(family_metadata, "faculty", "faculty_profiles", len(faculty))
         store.upsert_faculty_profiles(faculty)
     if admissions:
         store.upsert_admissions_facts(admissions)

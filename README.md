@@ -1,8 +1,8 @@
 # WebbGPT
 
-WebbGPT is an end-to-end repository for training a real decoder-only language model from scratch, aligning it into a helpful assistant, grounding it on a multi-domain Webb service stack, evaluating it honestly, exporting it for inference, and serving it through a local API and browser UI.
+WebbGPT is an end-to-end repository for building a real decoder-only language model from scratch, aligning it into a helpful assistant, grounding it on a multi-domain Webb service stack, evaluating it honestly, exporting it for inference, and serving it through a local API and browser UI.
 
-This repo is not only about getting a model to answer. It is also about making it clear:
+This repo is not only about getting a model to answer. It is also about keeping the important layers separate and inspectable:
 
 - what the raw model can do
 - what the retrieval and grounding pipeline can do
@@ -11,16 +11,18 @@ This repo is not only about getting a model to answer. It is also about making i
 
 The current local-MVP lane is intentionally opinionated about trustworthiness. It prefers explicit post-train validation, provenance-rich eval output, deterministic missing-data abstention, shared decode presets, and benchmark identity tracking over flattering but weak scores.
 
-The serve UI follows the same idea. Your AI assistant for all things Webb.
+The serve UI follows the same idea: answer first, but keep grounding, routing, provenance, and reproduction details close at hand.
 
 ## What It Is
 
-WebbGPT is a full stack for owning the model and the product surface around it.
+WebbGPT is a full stack for owning the model, the retrieval layer, the evaluation surface, and the user-facing product shell around them.
 
-- The base model is a custom decoder-only transformer with grouped-query attention, RoPE, RMSNorm, SwiGLU, KV-cache generation, repetition controls, and export support.
-- The training path covers tokenizer freezing, dataset preparation, pretraining, continued pretraining, supervised fine-tuning, and DPO preference optimization.
-- The product path uses a Webb grounding stack with family-aware snapshots, hybrid lexical/fuzzy retrieval, handbook parsing, provenance reporting, evaluation, and serving across course, faculty, handbook, admissions, student-life, museum, athletics, and planner-support lanes.
-- The repo is structured for both small local experiments and larger Linux multi-GPU runs.
+- The base-model path is a custom decoder-only transformer with grouped-query attention, RoPE, RMSNorm, SwiGLU, KV-cache generation, repetition controls, and export support.
+- The data and training path covers tokenizer freezing, raw-corpus collection, prepared-data materialization, pretraining, continued pretraining, supervised fine-tuning, and DPO preference optimization.
+- The evaluation path separates raw-model quality from grounded-pipeline quality, tracks provenance and release gates, and reports attribution lanes, retrieval audit, route audit, reliability warnings, and grounding quality.
+- The grounding path uses a Webb knowledge stack with family-aware snapshots, partial refresh, carry-forward behavior, handbook parsing, hybrid lexical/fuzzy retrieval, source classification, citation support, and snapshot diffing.
+- The serving path exposes the assistant through FastAPI plus an answer-first browser UI with grounded/cited status, malformed-output handling, snapshot-aware startup behavior, and shared decode assumptions.
+- The repo is structured for both small local experiments and larger Linux multi-GPU runs, and it can be used with either live Webb sources or the structured offline fixtures in `data/webb/mock/`.
 
 The current supported lanes are:
 
@@ -30,6 +32,14 @@ The current supported lanes are:
 - `remote-7b`: intended full serious lane
 
 `local-mvp` is the most practical lane for local iteration, but it should still be treated as an experimental recovery lane, not as a finished strong assistant.
+
+You can use WebbGPT as:
+
+- a from-scratch model-building repo
+- a post-train and evaluation harness for trustworthiness work
+- a snapshot-backed Webb grounding and retrieval system
+- an offline fixture lab for ingest, routing, diffing, and regression testing
+- a local API and browser product shell for manual demos and product iteration
 
 ## Intended workflow
 
@@ -42,6 +52,8 @@ The current supported lanes are:
 7. Run DPO with explicit held-out validation plus LM-health tracking.
 8. Evaluate with benchmark provenance, attribution lanes, release gates, and retrieval audit.
 9. Export the best checkpoint, ingest grounded sources or sync a Webb snapshot, and serve the model with the same decode, tokenizer, and grounding assumptions used by evaluation.
+
+That is the canonical end-to-end flow, but the repo is intentionally modular. If you already have a model export, or if you are only iterating on grounding, benchmarks, or serving, you can enter at the later stages without running the full training stack.
 
 ## Quick Start
 
@@ -62,6 +74,11 @@ If this venv was created before the current dependency pins, refresh the core co
 ```bash
 pip install --upgrade --force-reinstall 'numpy<2' 'transformers>=4.43,<5'
 ```
+
+The full extras install above is the simplest default. If you only need one slice of the repo, the extras are also modular:
+
+- `.[dev,data,serve]` for grounding, benchmark, and serving work
+- `.[dev,train,data]` for tokenizer, data prep, training, and evaluation work
 
 ### Choose A Lane
 
@@ -117,6 +134,18 @@ webbgpt webb-sync \
   --source-policy-path data/webb/source_policies.json \
   --handbook-url 'https://webb.myschoolapp.com/ftpimages/823/download/download_10529422.pdf?_=1774412901890'
 ```
+
+Sync the offline demo source pack instead when you want to exercise ingest, routing, retrieval, snapshot diffing, or serve behavior without depending on live Webb availability:
+
+```bash
+webbgpt webb-sync \
+  --dsn sqlite:///artifacts/grounding/webbgpt-demo.db \
+  --seed-url-pack data/webb/seed_urls_demo.json \
+  --source-policy-path data/webb/source_policies.json \
+  --handbook-url data/webb/mock/handbook.txt
+```
+
+The demo pack uses the structured fixture set under `data/webb/mock/`, which is the fastest way to work on the Webb grounding surface offline.
 
 Evaluate a checkpoint manually against the Webb benchmark suite:
 
@@ -561,7 +590,7 @@ webbgpt test --all
 
 ### Pipeline At A Glance
 
-1. `src/cli.py` loads typed configs, dispatches subcommands, and coordinates the project from tokenizer creation through serving.
+1. `src/cli.py` loads typed configs, dispatches subcommands, writes starter configs and seed assets, and coordinates the project from tokenizer creation through serving.
 2. `src/tokenizer/spm.py` freezes a SentencePiece tokenizer, while `src/data/tokenizer_corpus.py` builds a real tokenizer corpus from FineWeb-Edu and emits progress updates during long corpus builds.
 3. `src/data/` loads raw text, JSONL, Hugging Face datasets, or prepared manifests, then cleans, tokenizes, packs, and materializes stage-specific artifacts.
 4. `src/model/` defines the custom decoder-only transformer, grouped-query attention, rotary embeddings, KV-cache generation, and anti-collapse generation controls.
@@ -569,7 +598,7 @@ webbgpt test --all
 6. `src/posttrain/` reuses the same model stack for SFT and DPO alignment, including explicit validation support, pinned qualitative regression prompts, best-checkpoint metadata, top-K candidate preservation, and early stopping.
 7. `src/eval/` measures held-out perplexity, assistant behavior, grounded catalog or Webb quality, attribution lanes, route audit, release gates, benchmark reliability, retrieval audit, and grounding quality across the expanded Webb domain set.
 8. `src/export/hf.py` converts internal checkpoints and tokenizer artifacts into a Hugging Face-style export and now writes export provenance.
-9. `src/grounding/` now powers the default Webb grounding stack with family-aware snapshots, source documents, handbook sections, faculty records, admissions facts, publications, athletics tables, retrieval chunks, partial refresh, carry-forward behavior, and hybrid no-embed lookup.
+9. `src/grounding/` now powers the default Webb grounding stack for both live and fixture-backed syncs, with family-aware snapshots, source documents, handbook sections, faculty records, admissions facts, publications, athletics tables, retrieval chunks, partial refresh, carry-forward behavior, and hybrid no-embed lookup.
 10. `src/serve/` exposes the assistant as a FastAPI app, chooses a runtime backend, grounds catalog or Webb answers, records provenance/transcripts, uses deterministic no-hit abstention for grounded factual misses, supports low-confidence route fan-out, and serves the answer-first browser UI with malformed-output interception plus structured details.
 
 ### Repository Map
@@ -579,7 +608,7 @@ webbgpt test --all
 - `src/`: All authored runtime code.
 - `src/tests/`: Regression coverage for config loading, packing, checkpoints, prepared-data resume behavior, evaluation trustworthiness, Webb grounding/snapshot sync, and CLI/profile guard rails.
 - `sample-configs/`: Supported starter configs for `debug`, `local-mvp`, `remote-3b`, and `remote-7b`, plus shared tokenizer configs.
-- `data/`: Checked-in example datasets for tokenizer building, local post-training, evaluation, and the Webb source packs, plus a few retained legacy catalog fixtures used by older internal tests.
+- `data/`: Checked-in example datasets for tokenizer building, local post-training, evaluation, live Webb source packs, the structured Webb fixture corpus, and a few retained legacy catalog fixtures used by older internal tests.
 - `artifacts/`: Generated runtime outputs such as tokenizer files, manifests, checkpoints, exports, evaluation results, transcripts, and snapshot-backed Webb grounding stores.
 
 ### Source Tree
@@ -647,7 +676,7 @@ webbgpt test --all
 #### `src/grounding/`
 
 - `src/grounding/__init__.py`: Lazy re-export surface for grounding helpers so lightweight imports do not eagerly require SQLAlchemy.
-- `src/grounding/ingest.py`: Supports `ingest-webb-site`, `ingest-webb-handbook`, `webb-sync`, and `diff-webb-snapshot` for the Webb grounding stack, including family-aware sync, partial refresh, carry-forward behavior, athletics ingest, and text-first handbook extraction with optional OCR fallback.
+- `src/grounding/ingest.py`: Supports `ingest-webb-site`, `ingest-webb-handbook`, `webb-sync`, and `diff-webb-snapshot` for the Webb grounding stack, including live or fixture-backed sync, family-aware refresh, carry-forward behavior, athletics ingest, and text-first handbook extraction with optional OCR fallback.
 - `src/grounding/provider.py`: Route-aware Webb grounding provider with `course_catalog`, `faculty`, `handbook_policy`, `student_life`, `admissions_general`, `museum_programs`, `athletics`, `planner_advice`, `chat`, and low-confidence top-2 route fan-out.
 - `src/grounding/store.py`: SQLAlchemy-backed access layer for the Webb knowledge-store schema, including snapshots, source documents, retrieval chunks, handbook sections, faculty records, admissions facts, publication versions, athletics tables, snapshot diffing, carry-forward helpers, and snapshot quality checks.
 - `src/grounding/types.py`: Dataclasses for grounding results, citations, and route decisions.
@@ -680,7 +709,7 @@ webbgpt test --all
 
 #### `sample-configs/` (active starter configs)
 
-Unsuffixed `sample-configs/*.json` files are shared Webb base/template configs for manual use and the offline demo path. Profile automation uses the suffixed lane-specific files such as `*-debug.json`, `*-local-mvp.json`, `*-3b.json`, and `*-7b.json`.
+Unsuffixed `sample-configs/*.json` files are shared Webb base/template configs written by `webbgpt init-config` for manual use and the offline demo path. Profile automation uses the suffixed lane-specific files such as `*-debug.json`, `*-local-mvp.json`, `*-3b.json`, and `*-7b.json`.
 
 - `sample-configs/tokenizer-corpus.json`: FineWeb-Edu tokenizer-corpus build settings.
 - `sample-configs/tokenizer.json`: Real SentencePiece tokenizer settings for the frozen project tokenizer.
@@ -775,9 +804,10 @@ Unsuffixed `sample-configs/*.json` files are shared Webb base/template configs f
 #### `data/webb/`
 
 - `data/webb/seed_urls.json`: Real Webb source pack starter list for live crawling or sync.
-- `data/webb/seed_urls_demo.json`: Offline Webb fixture source pack used by the Webb test suite and optional local fixture-based sync runs.
-- `data/webb/source_policies.json`: Simple page-type routing policies for Webb source classification.
-- `data/webb/mock/`: Offline Webb HTML fixtures for course catalog, faculty, admissions, student-life, mission/values, college guidance, museum/programs, athletics, publications, and handbook content used by fixture-based syncs and the Webb test suite.
+- `data/webb/seed_urls_demo.json`: Offline Webb fixture source pack used by the Webb test suite and optional local fixture-based sync runs. The demo pack now carries fixture metadata such as `source_kind`, `fixture_format`, and explicit department/year labels where relevant.
+- `data/webb/source_policies.json`: Page-type routing rules used for Webb source classification, including department pages, student-life pages, athletics pages, and publication/catalog URLs.
+- `data/webb/mock/`: Offline Webb fixtures for course catalog, department pages, faculty, admissions, student-life, mission/values, college guidance, museum/programs, athletics, publications, and handbook content used by fixture-based syncs and the Webb test suite. HTML fixtures now use cohesive semantic sections plus JSON payloads instead of raw transcript dumps, and the course-description pages follow a more consistent high-structure pattern across departments.
+- `data/webb/mock/README.md`: Fixture conventions for keeping Webb mock sources consistent, structured, and ingestion-friendly.
 
 The checked-in eval suite is intentionally broader than the earlier tiny slices, but it is still versioned content. Do not compare scores across runs unless the benchmark-suite, scorer, and release-gate hashes match.
 
@@ -849,6 +879,7 @@ The checked-in eval suite is intentionally broader than the earlier tiny slices,
 
 ## Notes
 
+- You do not need to use every layer of the repo. Training from scratch is only one path; grounding, evaluation, export, and serving can all be iterated on independently once you have a compatible model artifact.
 - Treat `pipeline_grounded` scores and `model_only` scores as different measurements. A strong grounded answer does not necessarily mean the raw model is strong.
 - Compare evaluation runs only when the benchmark-suite version, scorer version, release-gate config version, and grounding snapshot match.
 - Keep eval and serve on the same grounding snapshot if you want apples-to-apples grounded comparisons.

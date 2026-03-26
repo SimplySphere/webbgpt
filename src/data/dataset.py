@@ -4,6 +4,7 @@ import hashlib
 import json
 import random
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterable
@@ -33,6 +34,7 @@ from data.prepared import (
 )
 from data.preprocess import clean_document
 from data.schemas import DocumentRecord, PreferenceExample, SFTExample
+from progress import build_progress_snapshot
 from tokenizer import SentencePieceTokenizer
 
 
@@ -484,26 +486,33 @@ class DatasetBuilder:
             cleanup_prepare_outputs(manifest_path)
 
         if manifest_path.exists():
-            manifest = load_prepared_manifest(manifest_path)
-            manifest_fingerprint = manifest.get("input_fingerprint")
-            if manifest_fingerprint is None:
-                raise RuntimeError(
-                    f"Existing prepared manifest at {manifest_path} predates resumable metadata and is not safely reusable. "
-                    "Re-run with --force-rebuild."
+            if manifest_path.stat().st_size == 0:
+                _progress(
+                    f"WebbGPT: found empty prepared-manifest placeholder at {manifest_path}; "
+                    "treating it as a fresh target."
                 )
-            if manifest_fingerprint != input_fingerprint:
-                raise RuntimeError(
-                    f"Existing prepared manifest at {manifest_path} does not match the current {stage} inputs. "
-                    "Re-run with --force-rebuild."
-                )
-            if manifest.get("kind") != kind:
-                raise RuntimeError(
-                    f"Existing prepared manifest at {manifest_path} has kind {manifest.get('kind')!r}, expected {kind!r}. "
-                    "Re-run with --force-rebuild."
-                )
-            _progress(f"WebbGPT: reusing completed prepared stage {stage} from {manifest_path}.")
-            remove_resume_artifacts(manifest_path)
-            return "reuse", manifest
+                manifest_path.unlink()
+            else:
+                manifest = load_prepared_manifest(manifest_path)
+                manifest_fingerprint = manifest.get("input_fingerprint")
+                if manifest_fingerprint is None:
+                    raise RuntimeError(
+                        f"Existing prepared manifest at {manifest_path} predates resumable metadata and is not safely reusable. "
+                        "Re-run with --force-rebuild."
+                    )
+                if manifest_fingerprint != input_fingerprint:
+                    raise RuntimeError(
+                        f"Existing prepared manifest at {manifest_path} does not match the current {stage} inputs. "
+                        "Re-run with --force-rebuild."
+                    )
+                if manifest.get("kind") != kind:
+                    raise RuntimeError(
+                        f"Existing prepared manifest at {manifest_path} has kind {manifest.get('kind')!r}, expected {kind!r}. "
+                        "Re-run with --force-rebuild."
+                    )
+                _progress(f"WebbGPT: reusing completed prepared stage {stage} from {manifest_path}.")
+                remove_resume_artifacts(manifest_path)
+                return "reuse", manifest
 
         if resume_state_path.exists():
             state = load_prepared_manifest(resume_state_path)
@@ -577,6 +586,7 @@ class DatasetBuilder:
         resume_workspace.mkdir(parents=True, exist_ok=True)
         resume_state_path = prepared_resume_state_path(manifest_path)
         rows_buffer_path = resume_workspace / "rows-buffer.npy"
+        stage_start_time = time.monotonic()
 
         if action == "resume":
             state = payload or {}
@@ -599,10 +609,6 @@ class DatasetBuilder:
             num_tokens = int(state.get("num_tokens", 0))
             dedupe_hash_chunks = list(state.get("dedupe_hash_chunks", []))
             seen_hashes = load_seen_hashes(dedupe_hash_chunks) if any(source.deduplicate for source in sources) else set()
-            _progress(
-                f"WebbGPT: resuming prepared stage {stage} "
-                f"from {len(shards):,} shard(s) and {num_tokens:,} packed tokens."
-            )
         else:
             source_progress = self._initial_source_progress(sources)
             rows: list[list[int]] = []
@@ -617,7 +623,23 @@ class DatasetBuilder:
             num_tokens = 0
             dedupe_hash_chunks: list[str] = []
             seen_hashes: set[str] = set()
-            _progress(f"WebbGPT: starting fresh prepared stage {stage}.")
+
+        def _stage_summary() -> str:
+            return build_progress_snapshot(
+                time.monotonic() - stage_start_time,
+                (num_tokens, token_budget),
+            ).summary
+
+        def _stage_progress(message: str) -> None:
+            _progress(f"{message} [{_stage_summary()}]")
+
+        if action == "resume":
+            _stage_progress(
+                f"WebbGPT: resuming prepared stage {stage} "
+                f"from {len(shards):,} shard(s) and {num_tokens:,} packed tokens."
+            )
+        else:
+            _stage_progress(f"WebbGPT: starting fresh prepared stage {stage}.")
 
         pending_hashes: list[str] = []
         consumed_since_snapshot = 0
@@ -669,7 +691,7 @@ class DatasetBuilder:
             save_buffer_rows(shard_path, rows)
             shards.append({"path": str(shard_path), "rows": len(rows)})
             message_prefix = "final shard" if final else "shard"
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage}: wrote {message_prefix} {shard_index + 1} "
                 f"({num_sequences:,} sequences, {num_tokens:,} packed tokens so far)."
             )
@@ -683,7 +705,7 @@ class DatasetBuilder:
             kept_records = int(progress.get("accepted_records", 0))
             if token_budget_reached:
                 break
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage} source {source.name} "
                 f"({source.format}) from {_source_location(source)}."
             )
@@ -717,7 +739,7 @@ class DatasetBuilder:
                                 token_budget_reached = True
                                 break
                         if kept_records % 1000 == 0:
-                            _progress(
+                            _stage_progress(
                                 f"WebbGPT: preparing {stage} source {source.name}: "
                                 f"kept {kept_records:,} documents so far."
                             )
@@ -725,7 +747,7 @@ class DatasetBuilder:
                     snapshot_state()
                 if token_budget_reached:
                     break
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage} source {source.name}: "
                 f"finished with {kept_records:,} documents kept."
             )
@@ -755,7 +777,7 @@ class DatasetBuilder:
         }
         save_prepared_manifest(manifest_path, manifest)
         remove_resume_artifacts(manifest_path)
-        _progress(
+        _stage_progress(
             f"WebbGPT: finished preparing {stage} "
             f"({num_sequences:,} sequences across {len(shards):,} shards, {num_tokens:,} packed tokens)."
         )
@@ -798,6 +820,7 @@ class DatasetBuilder:
         resume_state_path = prepared_resume_state_path(manifest_path)
         input_buffer_path = resume_workspace / "input-buffer.npy"
         label_buffer_path = resume_workspace / "label-buffer.npy"
+        stage_start_time = time.monotonic()
 
         if action == "resume":
             state = payload or {}
@@ -813,10 +836,6 @@ class DatasetBuilder:
             shard_index = int(state.get("next_shard_index", len(shards)))
             num_examples = int(state.get("num_examples", 0))
             num_label_tokens = int(state.get("num_label_tokens", 0))
-            _progress(
-                f"WebbGPT: resuming prepared stage {stage} "
-                f"from {len(shards):,} shard(s) and {num_examples:,} examples."
-            )
         else:
             source_progress = self._initial_source_progress(sources)
             input_rows = []
@@ -825,7 +844,20 @@ class DatasetBuilder:
             shard_index = 0
             num_examples = 0
             num_label_tokens = 0
-            _progress(f"WebbGPT: starting fresh prepared stage {stage}.")
+
+        def _stage_summary() -> str:
+            return build_progress_snapshot(time.monotonic() - stage_start_time).summary
+
+        def _stage_progress(message: str) -> None:
+            _progress(f"{message} [{_stage_summary()}]")
+
+        if action == "resume":
+            _stage_progress(
+                f"WebbGPT: resuming prepared stage {stage} "
+                f"from {len(shards):,} shard(s) and {num_examples:,} examples."
+            )
+        else:
+            _stage_progress(f"WebbGPT: starting fresh prepared stage {stage}.")
 
         consumed_since_snapshot = 0
 
@@ -876,7 +908,7 @@ class DatasetBuilder:
                 }
             )
             message_prefix = "final shard" if final else "shard"
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage}: wrote {message_prefix} {shard_index + 1} "
                 f"({num_examples:,} examples, {num_label_tokens:,} supervised tokens so far)."
             )
@@ -888,7 +920,7 @@ class DatasetBuilder:
         for source_index, source in enumerate(sources):
             progress = source_progress[source_index]
             accepted_records = int(progress.get("accepted_records", 0))
-            _progress(f"WebbGPT: preparing {stage} source {source.name} ({source.format}).")
+            _stage_progress(f"WebbGPT: preparing {stage} source {source.name} ({source.format}).")
             for item in self._load_source_records(
                 source,
                 raw_records_consumed=int(progress.get("raw_records_consumed", 0)),
@@ -916,13 +948,13 @@ class DatasetBuilder:
                 if len(input_rows) >= self.config.prepared_shard_size:
                     flush_completed_shard()
                 if accepted_records % 500 == 0:
-                    _progress(
+                    _stage_progress(
                         f"WebbGPT: preparing {stage} source {source.name}: "
                         f"loaded {accepted_records:,} SFT examples so far."
                     )
                 if consumed_since_snapshot >= PREPARE_EXAMPLE_SNAPSHOT_INTERVAL:
                     snapshot_state()
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage} source {source.name}: "
                 f"finished with {accepted_records:,} SFT examples."
             )
@@ -943,7 +975,7 @@ class DatasetBuilder:
         }
         save_prepared_manifest(manifest_path, manifest)
         remove_resume_artifacts(manifest_path)
-        _progress(
+        _stage_progress(
             f"WebbGPT: finished preparing {stage} "
             f"({num_examples:,} examples across {len(shards):,} shards, {num_label_tokens:,} supervised tokens)."
         )
@@ -986,6 +1018,7 @@ class DatasetBuilder:
         resume_state_path = prepared_resume_state_path(manifest_path)
         chosen_buffer_path = resume_workspace / "chosen-buffer.npy"
         rejected_buffer_path = resume_workspace / "rejected-buffer.npy"
+        stage_start_time = time.monotonic()
 
         if action == "resume":
             state = payload or {}
@@ -1000,10 +1033,6 @@ class DatasetBuilder:
             shards = list(state.get("shards", []))
             shard_index = int(state.get("next_shard_index", len(shards)))
             num_examples = int(state.get("num_examples", 0))
-            _progress(
-                f"WebbGPT: resuming prepared stage {stage} "
-                f"from {len(shards):,} shard(s) and {num_examples:,} preference examples."
-            )
         else:
             source_progress = self._initial_source_progress(sources)
             chosen_rows = []
@@ -1011,7 +1040,20 @@ class DatasetBuilder:
             shards = []
             shard_index = 0
             num_examples = 0
-            _progress(f"WebbGPT: starting fresh prepared stage {stage}.")
+
+        def _stage_summary() -> str:
+            return build_progress_snapshot(time.monotonic() - stage_start_time).summary
+
+        def _stage_progress(message: str) -> None:
+            _progress(f"{message} [{_stage_summary()}]")
+
+        if action == "resume":
+            _stage_progress(
+                f"WebbGPT: resuming prepared stage {stage} "
+                f"from {len(shards):,} shard(s) and {num_examples:,} preference examples."
+            )
+        else:
+            _stage_progress(f"WebbGPT: starting fresh prepared stage {stage}.")
 
         consumed_since_snapshot = 0
 
@@ -1061,7 +1103,7 @@ class DatasetBuilder:
                 }
             )
             message_prefix = "final shard" if final else "shard"
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage}: wrote {message_prefix} {shard_index + 1} "
                 f"({num_examples:,} preference examples so far)."
             )
@@ -1073,7 +1115,7 @@ class DatasetBuilder:
         for source_index, source in enumerate(sources):
             progress = source_progress[source_index]
             accepted_records = int(progress.get("accepted_records", 0))
-            _progress(f"WebbGPT: preparing {stage} source {source.name} ({source.format}).")
+            _stage_progress(f"WebbGPT: preparing {stage} source {source.name} ({source.format}).")
             for item in self._load_source_records(
                 source,
                 raw_records_consumed=int(progress.get("raw_records_consumed", 0)),
@@ -1095,13 +1137,13 @@ class DatasetBuilder:
                 if len(chosen_rows) >= self.config.prepared_shard_size:
                     flush_completed_shard()
                 if accepted_records % 500 == 0:
-                    _progress(
+                    _stage_progress(
                         f"WebbGPT: preparing {stage} source {source.name}: "
                         f"loaded {accepted_records:,} preference examples so far."
                     )
                 if consumed_since_snapshot >= PREPARE_EXAMPLE_SNAPSHOT_INTERVAL:
                     snapshot_state()
-            _progress(
+            _stage_progress(
                 f"WebbGPT: preparing {stage} source {source.name}: "
                 f"finished with {accepted_records:,} preference examples."
             )
@@ -1121,7 +1163,7 @@ class DatasetBuilder:
         }
         save_prepared_manifest(manifest_path, manifest)
         remove_resume_artifacts(manifest_path)
-        _progress(
+        _stage_progress(
             f"WebbGPT: finished preparing {stage} "
             f"({num_examples:,} examples across {len(shards):,} shards)."
         )
