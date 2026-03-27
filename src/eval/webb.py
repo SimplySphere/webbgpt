@@ -162,6 +162,7 @@ def evaluate_webb_benchmark(
     tokenizer_path: str | None = None,
     grounding_dsn: str,
     seed_url_pack: str,
+    offline_seed_url_pack: str | None = None,
     handbook_url: str | None = None,
     source_policy_path: str | None = None,
     snapshot_id: str = "latest",
@@ -186,6 +187,7 @@ def evaluate_webb_benchmark(
             sync_result = webb_sync(
                 grounding_dsn,
                 seed_url_pack=seed_url_pack,
+                offline_seed_url_pack=offline_seed_url_pack,
                 source_policy_path=source_policy_path,
                 handbook_url=handbook_url,
                 allow_ocr_fallback=allow_ocr_fallback,

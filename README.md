@@ -111,16 +111,6 @@ webbgpt main --profile local-mvp --no-serve
 webbgpt serve --serve-config sample-configs/serve-local-mvp.json
 ```
 
-The local-MVP eval output now includes:
-
-- checkpoint, tokenizer, grounding-snapshot, decode, and seed provenance
-- benchmark-suite version/hash
-- scorer version/hash
-- release-gate config version/hash
-- `model_only`, `pipeline_grounded`, and `retrieval_oracle` grounded attribution lanes
-- benchmark reliability warnings for small slices
-- retrieval audit summaries
-
 ### Manual Webb Sync
 
 You usually do not need this when you run `webbgpt main --profile ...`, because the profile-driven path already uses Webb grounding, and `serve` can resync with `--sync-on-start`. Use these commands when you want to inspect or refresh the Webb knowledge store yourself.
@@ -131,6 +121,17 @@ Sync the live Webb sources:
 webbgpt webb-sync \
   --dsn sqlite:///artifacts/grounding/webbgpt-webb.db \
   --seed-url-pack data/webb/seed_urls.json \
+  --source-policy-path data/webb/source_policies.json \
+  --handbook-url 'https://webb.myschoolapp.com/ftpimages/823/download/download_10529422.pdf?_=1774412901890'
+```
+
+If you have private or Webb-authorized local documents that are not on the public site, you can layer them on top of the live sync with an offline overlay pack. The live pack is still fetched, and the local/private pack is ingested in the same snapshot as an additive overlay:
+
+```bash
+webbgpt webb-sync \
+  --dsn sqlite:///artifacts/grounding/webbgpt-webb.db \
+  --seed-url-pack data/webb/seed_urls.json \
+  --offline-seed-url-pack data/webb/seed_urls_private.json \
   --source-policy-path data/webb/source_policies.json \
   --handbook-url 'https://webb.myschoolapp.com/ftpimages/823/download/download_10529422.pdf?_=1774412901890'
 ```
@@ -163,7 +164,7 @@ Serve the debug lane and force a fresh sync immediately before boot:
 webbgpt serve --serve-config sample-configs/serve-debug.json --sync-on-start
 ```
 
-The grounded Webb service surface now covers the Part 1 baseline plus the current Part 2 expansion:
+The grounded Webb service surface now covers:
 
 - course catalog and year diffs
 - handbook and policy
@@ -172,9 +173,7 @@ The grounded Webb service surface now covers the Part 1 baseline plus the curren
 - student-life and culture/community
 - museum and unique programs
 - athletics
-- planner/advice as an opt-in beta lane
-
-The root browser UI stays answer-first, shows compact grounded/cited status, surfaces malformed-output warnings with retry actions, and keeps provenance, routing, and reproduction details behind a structured details drawer.
+- planner/advice 
 
 If you only want to refresh part of the Webb knowledge store, the sync path is now family-aware:
 
@@ -805,6 +804,7 @@ Unsuffixed `sample-configs/*.json` files are shared Webb base/template configs w
 
 - `data/webb/seed_urls.json`: Real Webb source pack starter list for live crawling or sync.
 - `data/webb/seed_urls_demo.json`: Offline Webb fixture source pack used by the Webb test suite and optional local fixture-based sync runs. The demo pack now carries fixture metadata such as `source_kind`, `fixture_format`, and explicit department/year labels where relevant.
+- `data/webb/seed_urls_private.json`: Optional local/private overlay pack for Webb-authorized documents that are not on the public site. Use it together with `--offline-seed-url-pack` when you want a live sync plus private local documents in the same grounding snapshot.
 - `data/webb/source_policies.json`: Page-type routing rules used for Webb source classification, including department pages, student-life pages, athletics pages, and publication/catalog URLs.
 - `data/webb/mock/`: Offline Webb fixtures for course catalog, department pages, faculty, admissions, student-life, mission/values, college guidance, museum/programs, athletics, publications, and handbook content used by fixture-based syncs and the Webb test suite. HTML fixtures now use cohesive semantic sections plus JSON payloads instead of raw transcript dumps, and the course-description pages follow a more consistent high-structure pattern across departments.
 - `data/webb/mock/README.md`: Fixture conventions for keeping Webb mock sources consistent, structured, and ingestion-friendly.

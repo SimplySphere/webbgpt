@@ -7,11 +7,13 @@ from types import SimpleNamespace
 import numpy as np
 
 import pytest
+from fastapi.testclient import TestClient
 
 from config import DataConfig, DataSourceConfig, GroundingConfig, ServeConfig
 from data.dataset import DatasetBuilder
 from eval.assistant import _score_response
 from grounding.ingest import webb_sync
+from grounding.types import Citation
 from posttrain.eval import update_topk_candidates
 from provenance import benchmark_manifest, reliability_payload
 from serve.app import build_app
@@ -73,6 +75,63 @@ def test_orchestrator_intercepts_degenerate_output():
     assert "response generation failed" in reply.text.lower()
     assert reply.metadata["status"]["degenerate_output"] is True
     assert reply.metadata["debug"]["raw_output"]
+
+
+def test_chat_endpoint_serializes_slotted_citations(monkeypatch: pytest.MonkeyPatch):
+    class _Backend:
+        backend_name = "dummy"
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    class _Orchestrator:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def respond(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                text="Grounded answer",
+                used_tools=True,
+                citations=[
+                    Citation(
+                        source_type="mock",
+                        source_id="src-1",
+                        label="Demo Source",
+                        snippet="Snippet text",
+                        metadata={"page": 1},
+                    )
+                ],
+                metadata={},
+            )
+
+    monkeypatch.setattr("serve.app.VLLMChatBackend", _Backend)
+    monkeypatch.setattr("serve.app.TransformersChatBackend", _Backend)
+    monkeypatch.setattr("serve.app.AssistantOrchestrator", _Orchestrator)
+    monkeypatch.setattr("serve.app.seed_everything", lambda _seed: {"python": 52, "numpy": 52, "torch": 52})
+
+    client = TestClient(build_app(ServeConfig(enable_grounding=False)))
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "messages": [{"role": "user", "content": "What is Webb?"}],
+            "tools": True,
+            "citations": True,
+            "safe_decode": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["used_tools"] is True
+    assert payload["citations"] == [
+        {
+            "source_type": "mock",
+            "source_id": "src-1",
+            "label": "Demo Source",
+            "snippet": "Snippet text",
+            "metadata": {"page": 1},
+        }
+    ]
 
 
 def test_benchmark_manifest_and_reliability_report_counts(tmp_path: Path):

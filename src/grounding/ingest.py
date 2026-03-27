@@ -133,6 +133,25 @@ def _load_seed_entries(seed_url_pack: str) -> list[dict[str, Any]]:
     raise ValueError(f"Unsupported seed pack format in {seed_url_pack!r}")
 
 
+def _combined_seed_entries(*seed_url_packs: str | None) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str | None, str | None], dict[str, Any]] = {}
+    for raw_pack in seed_url_packs:
+        if not raw_pack:
+            continue
+        for entry in _load_seed_entries(raw_pack):
+            url = str(entry.get("url") or "").strip()
+            if not url:
+                continue
+            key = (
+                url,
+                str(entry.get("page_type") or "").strip(),
+                entry.get("school_year"),
+                entry.get("department"),
+            )
+            merged[key] = dict(entry)
+    return list(merged.values())
+
+
 def _load_source_policies(path: str | None) -> list[dict[str, Any]]:
     if not path:
         return []
@@ -881,6 +900,7 @@ def ingest_webb_site(
     dsn: str,
     seed_url_pack: str,
     *,
+    offline_seed_url_pack: str | None = None,
     source_policy_path: str | None = None,
     snapshot_id: str | None = None,
     label: str = "webb-site-sync",
@@ -890,10 +910,15 @@ def ingest_webb_site(
     store = WebbKnowledgeStore(dsn)
     store.create_schema()
     selected_families = _normalize_selected_families(families)
+    seed_url_packs = [pack for pack in [seed_url_pack, offline_seed_url_pack] if pack]
     active_snapshot_id = snapshot_id or store.create_snapshot(
         label=label,
         seed_url_pack=seed_url_pack,
-        metadata={"created_at": datetime.now(timezone.utc).isoformat()},
+        metadata={
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "seed_url_packs": seed_url_packs,
+            "offline_seed_url_pack": offline_seed_url_pack,
+        },
     )
     policies = _load_source_policies(source_policy_path)
     documents: list[dict[str, Any]] = []
@@ -906,7 +931,7 @@ def ingest_webb_site(
     athletics_games: list[dict[str, Any]] = []
     athletics_records: list[dict[str, Any]] = []
     family_metadata = _family_metadata_template(selected_families)
-    for raw_entry in _load_seed_entries(seed_url_pack):
+    for raw_entry in _combined_seed_entries(seed_url_pack, offline_seed_url_pack):
         entry = dict(raw_entry)
         entry["_snapshot_id"] = active_snapshot_id
         source_url = str(entry.get("url") or entry.get("path") or "").strip()
@@ -1043,6 +1068,7 @@ def ingest_webb_site(
         snapshot = store.complete_snapshot(active_snapshot_id, metadata={"families": family_metadata})
     return {
         "snapshot_id": active_snapshot_id,
+        "seed_url_packs": seed_url_packs,
         "documents_ingested": len(documents),
         "chunks_ingested": len(chunks),
         "course_versions_ingested": len(courses),
@@ -1210,6 +1236,7 @@ def webb_sync(
     dsn: str,
     *,
     seed_url_pack: str,
+    offline_seed_url_pack: str | None = None,
     source_policy_path: str | None = None,
     handbook_url: str | None = None,
     allow_ocr_fallback: bool = False,
@@ -1222,11 +1249,16 @@ def webb_sync(
     if not handbook_url and "handbook_policy" in selected_families:
         selected_families = [family for family in selected_families if family != "handbook_policy"]
     previous_snapshot = store.latest_completed_snapshot()
+    seed_url_packs = [pack for pack in [seed_url_pack, offline_seed_url_pack] if pack]
     snapshot_id = store.create_snapshot(
         label=label,
         seed_url_pack=seed_url_pack,
         handbook_url=handbook_url,
-        metadata={"created_at": datetime.now(timezone.utc).isoformat()},
+        metadata={
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "seed_url_packs": seed_url_packs,
+            "offline_seed_url_pack": offline_seed_url_pack,
+        },
     )
     site_result = None
     site_families = [family for family in selected_families if family != "handbook_policy"]
@@ -1234,6 +1266,7 @@ def webb_sync(
         site_result = ingest_webb_site(
             dsn,
             seed_url_pack,
+            offline_seed_url_pack=offline_seed_url_pack,
             source_policy_path=source_policy_path,
             snapshot_id=snapshot_id,
             label=label,
@@ -1279,12 +1312,15 @@ def webb_sync(
             "families": family_metadata,
             "selected_families": selected_families,
             "carried_forward_families": carried_forward_families,
+            "seed_url_packs": seed_url_packs,
+            "offline_seed_url_pack": offline_seed_url_pack,
             "freshness_policy": DEFAULT_FAMILY_FRESHNESS,
             "source_policy_path": source_policy_path,
         },
     )
     return {
         "snapshot_id": snapshot_id,
+        "seed_url_packs": seed_url_packs,
         "site": site_result,
         "handbook": handbook_result,
         "selected_families": selected_families,

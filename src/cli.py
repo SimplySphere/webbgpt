@@ -175,6 +175,7 @@ def _parse_args() -> argparse.Namespace:
     ingest_webb_site = subparsers.add_parser("ingest-webb-site", help="Ingest Webb HTML sources")
     ingest_webb_site.add_argument("--dsn", required=True)
     ingest_webb_site.add_argument("--seed-url-pack", required=True)
+    ingest_webb_site.add_argument("--offline-seed-url-pack")
     ingest_webb_site.add_argument("--source-policy-path")
     ingest_webb_site.add_argument("--snapshot-id")
     ingest_webb_site.add_argument("--label", default="webb-site-sync")
@@ -190,6 +191,7 @@ def _parse_args() -> argparse.Namespace:
     webb_sync_parser = subparsers.add_parser("webb-sync", help="Sync the Webb academics source pack")
     webb_sync_parser.add_argument("--dsn", required=True)
     webb_sync_parser.add_argument("--seed-url-pack", required=True)
+    webb_sync_parser.add_argument("--offline-seed-url-pack")
     webb_sync_parser.add_argument("--source-policy-path")
     webb_sync_parser.add_argument("--handbook-url")
     webb_sync_parser.add_argument("--allow-ocr-fallback", action="store_true")
@@ -3230,6 +3232,7 @@ def main() -> int:
         result = ingest_webb_site(
             args.dsn,
             args.seed_url_pack,
+            offline_seed_url_pack=args.offline_seed_url_pack,
             source_policy_path=args.source_policy_path,
             snapshot_id=args.snapshot_id,
             label=args.label,
@@ -3257,6 +3260,7 @@ def main() -> int:
         result = webb_sync(
             args.dsn,
             seed_url_pack=args.seed_url_pack,
+            offline_seed_url_pack=args.offline_seed_url_pack,
             source_policy_path=args.source_policy_path,
             handbook_url=args.handbook_url,
             allow_ocr_fallback=args.allow_ocr_fallback,

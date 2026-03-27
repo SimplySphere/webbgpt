@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI
@@ -37,6 +38,20 @@ class ChatResponse(BaseModel):
     used_tools: bool
     citations: list[dict] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
+
+
+def _serialize_citation(citation: object) -> dict:
+    if isinstance(citation, dict):
+        return dict(citation)
+    if is_dataclass(citation):
+        return asdict(citation)
+    if hasattr(citation, "model_dump"):
+        return citation.model_dump()
+    payload = {}
+    for field in ("source_type", "source_id", "label", "snippet", "metadata"):
+        if hasattr(citation, field):
+            payload[field] = getattr(citation, field)
+    return payload or {"value": str(citation)}
 
 
 def _append_transcript(path: str, payload: dict) -> None:
@@ -86,6 +101,7 @@ def build_app(config: ServeConfig) -> FastAPI:
             sync_result = webb_sync(
                 grounding_config.dsn,
                 seed_url_pack=grounding_config.seed_url_pack,
+                offline_seed_url_pack=grounding_config.offline_seed_url_pack,
                 source_policy_path=grounding_config.source_policy_path,
                 handbook_url=grounding_config.handbook_url,
                 allow_ocr_fallback=grounding_config.allow_ocr_fallback,
@@ -119,6 +135,7 @@ def build_app(config: ServeConfig) -> FastAPI:
             grounding_config.dsn,
             snapshot_id=resolved_snapshot_id,
             seed_url_pack=grounding_config.seed_url_pack,
+            offline_seed_url_pack=grounding_config.offline_seed_url_pack,
             handbook_url=grounding_config.handbook_url,
             source_policy_path=grounding_config.source_policy_path,
             catalog_input_path=grounding_config.legacy_catalog_input_path,
@@ -192,6 +209,7 @@ def build_app(config: ServeConfig) -> FastAPI:
             citations=request.citations,
             safe_decode=request.safe_decode,
         )
+        serialized_citations = [_serialize_citation(citation) for citation in response.citations]
         response.metadata.setdefault("provenance", provenance)
         response.metadata.setdefault("repro_capsule", _build_repro_capsule(provenance, response.metadata))
         if config.transcript_path:
@@ -203,7 +221,7 @@ def build_app(config: ServeConfig) -> FastAPI:
                     "response": {
                         "text": response.text,
                         "used_tools": response.used_tools,
-                        "citations": [citation.__dict__ for citation in response.citations],
+                        "citations": serialized_citations,
                         "metadata": response.metadata,
                     },
                 },
@@ -211,7 +229,7 @@ def build_app(config: ServeConfig) -> FastAPI:
         return ChatResponse(
             text=response.text,
             used_tools=response.used_tools,
-            citations=[citation.__dict__ for citation in response.citations],
+            citations=serialized_citations,
             metadata=response.metadata,
         )
 

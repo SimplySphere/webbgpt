@@ -54,6 +54,13 @@ def test_webb_sync_populates_snapshot_and_queries(tmp_path: Path):
     assert course_result.hits
     assert "museum" in f"{course_result.hits[0].title} {course_result.hits[0].content}".lower()
 
+    humanities_advst_result = provider.query(
+        "Explain all the humanities courses that are advanced studies",
+        route="course_catalog",
+    )
+    assert humanities_advst_result.hits
+    assert "humanities" in humanities_advst_result.hits[0].title.lower()
+
     course_diff_result = provider.query(
         "How did math and computer science change from 2025-26 to 2026-27 at Webb?",
         route="course_catalog",
@@ -70,9 +77,65 @@ def test_webb_sync_populates_snapshot_and_queries(tmp_path: Path):
     assert student_life_result.hits
     assert "dorm life is central to the webb experience" in student_life_result.hits[0].content.lower()
 
+    dining_result = provider.query("How is the food in the cafeteria?", route="student_life")
+    assert dining_result.hits
+    assert all("dining" in hit.title.lower() for hit in dining_result.hits)
+
     athletics_result = provider.query("Did Girls Tennis beat Woodcrest Christian in 2025-26?", route="athletics")
     assert athletics_result.hits
     assert "win 12-6" in athletics_result.hits[0].content.lower()
+
+
+def test_webb_sync_can_merge_live_pack_with_offline_overlay(tmp_path: Path):
+    dsn = f"sqlite:///{tmp_path / 'webb.db'}"
+    primary_pack = tmp_path / "seed_urls_live.json"
+    overlay_pack = tmp_path / "seed_urls_offline.json"
+    primary_pack.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "url": "data/webb/mock/mission_values.html",
+                        "page_type": "mission_values",
+                    }
+                ]
+            }
+        )
+    )
+    overlay_pack.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "url": "data/webb/mock/dorm_life.html",
+                        "page_type": "student_life",
+                    }
+                ]
+            }
+        )
+    )
+
+    result = webb_sync(
+        dsn,
+        seed_url_pack=str(primary_pack),
+        offline_seed_url_pack=str(overlay_pack),
+        source_policy_path=SOURCE_POLICIES,
+        handbook_url=HANDBOOK_PATH,
+        label="combined-sync",
+    )
+
+    assert result["seed_url_packs"] == [str(primary_pack), str(overlay_pack)]
+    assert result["families"]["mission_values"]["refreshed"] is True
+    assert result["families"]["student_life"]["refreshed"] is True
+
+    store = WebbKnowledgeStore(dsn)
+    families = {row.source_family for row in store.list_source_documents(result["snapshot_id"])}
+    assert "mission_values" in families
+    assert "student_life" in families
+
+    provider = WebbGroundingProvider(store)
+    dorm_result = provider.query("What is dorm life like at Webb?", route="student_life")
+    assert dorm_result.hits
 
 
 def test_diff_webb_snapshot_marks_changed_and_unchanged(tmp_path: Path):
@@ -163,9 +226,22 @@ def test_webb_provider_routes_across_domains(tmp_path: Path):
     assert provider.route_messages([ChatMessage(role="user", content="Who is the Dean of College Guidance?")]).route == "faculty"
     assert provider.route_messages([ChatMessage(role="user", content="How do I apply to Webb?")]).route == "admissions_general"
     assert provider.route_messages([ChatMessage(role="user", content="How did CS offerings change from 2025-26 to 2026-27?")]).route == "course_catalog"
+    assert provider.route_messages([ChatMessage(role="user", content="How are humanities at Webb?")]).route == "course_catalog"
+    assert provider.route_messages([ChatMessage(role="user", content="How are world languages at Webb?")]).route == "course_catalog"
+    assert provider.route_messages([ChatMessage(role="user", content="How are fine arts at Webb?")]).route == "course_catalog"
     assert provider.route_messages([ChatMessage(role="user", content="What is dorm life like at Webb?")]).route == "student_life"
     assert provider.route_messages([ChatMessage(role="user", content="What does Webb say about the Alf Museum?")]).route == "museum_programs"
     assert provider.route_messages([ChatMessage(role="user", content="Did Girls Tennis win against Woodcrest Christian?")]).route == "athletics"
+    assert provider.route_messages([ChatMessage(role="user", content="Can I go to Harvard from Webb?")]).route == "admissions_general"
+
+    campus_decision = provider.route_messages([ChatMessage(role="user", content="How beautiful is the campus?")])
+    assert campus_decision.grounded is True
+    assert set(campus_decision.metadata["fanout_routes"]) & {"admissions_general", "student_life"}
+
+    life_decision = provider.route_messages([ChatMessage(role="user", content="How is life living at Webb?")])
+    assert life_decision.grounded is True
+    assert life_decision.route == "student_life"
+    assert "student_life" in life_decision.metadata["fanout_routes"]
 
 
 def test_webb_sync_can_refresh_one_family_and_carry_forward_others(tmp_path: Path):

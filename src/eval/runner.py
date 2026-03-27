@@ -444,6 +444,7 @@ def _run_evaluation_once(
             eval_config.grounding.dsn,
             snapshot_id=resolved_snapshot_id,
             seed_url_pack=eval_config.grounding.seed_url_pack,
+            offline_seed_url_pack=eval_config.grounding.offline_seed_url_pack,
             handbook_url=eval_config.grounding.handbook_url,
             source_policy_path=eval_config.grounding.source_policy_path,
             catalog_input_path=eval_config.grounding.legacy_catalog_input_path,

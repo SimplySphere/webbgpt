@@ -9,6 +9,7 @@ from grounding.types import Citation, GroundingHit, GroundingResult, RouteDecisi
 
 COURSE_CODE_RE = re.compile(r"\b([a-z]{2,8})\s?-?(\d{2,4}[a-z]?)\b", re.IGNORECASE)
 SCHOOL_YEAR_RE = re.compile(r"(20\d{2})\s*[-–]\s*(\d{2}|\d{4})")
+MAX_CITATION_SNIPPET_CHARS = 1_200
 
 
 class GroundingProvider:
@@ -48,7 +49,7 @@ class GroundingProvider:
                     source_type="course",
                     source_id=course.id,
                     label=course.code,
-                    snippet=content[:280],
+                    snippet=content[:MAX_CITATION_SNIPPET_CHARS],
                     metadata={"title": course.title, "credits": course.credits},
                 )
             ]
@@ -118,6 +119,10 @@ class WebbGroundingProvider:
             "",
         )
         lowered = latest_user.lower()
+        mentions_webb_context = bool(
+            re.search(r"\b(?:at|from|in|about)\s+webb\b", lowered)
+            or re.search(r"\bwebb(?:'s)?\b", lowered)
+        )
         school_years = self._extract_school_years(latest_user)
         scores = {
             "course_catalog": 0,
@@ -133,9 +138,64 @@ class WebbGroundingProvider:
             scores["handbook_policy"] += 5
         if any(keyword in lowered for keyword in ["faculty", "teacher", "teachers", "dean", "who teaches", "who is", "directory", "staff"]):
             scores["faculty"] += 4
-        if any(keyword in lowered for keyword in ["apply", "application", "admission", "admissions", "tuition", "financial aid", "deadline", "mission", "values", "community", "college guidance", "prospective", "interview"]):
+        if any(
+            keyword in lowered
+            for keyword in [
+                "apply",
+                "application",
+                "admission",
+                "admissions",
+                "tuition",
+                "financial aid",
+                "deadline",
+                "mission",
+                "values",
+                "community",
+                "college guidance",
+                "prospective",
+                "interview",
+                "campus",
+                "location",
+                "colleges",
+                "universities",
+                "matriculation",
+                "matriculate",
+                "college results",
+                "college outcomes",
+                "harvard",
+                "yale",
+                "princeton",
+                "stanford",
+                "mit",
+                "ivy",
+            ]
+        ):
             scores["admissions_general"] += 4
-        if any(keyword in lowered for keyword in ["dorm", "dorm life", "dining", "food", "chapel", "clubs", "affinity", "student leadership", "wellness", "weekend", "student life", "what is webb like", "culture"]):
+        if any(
+            keyword in lowered
+            for keyword in [
+                "dorm",
+                "dorm life",
+                "dining",
+                "food",
+                "chapel",
+                "clubs",
+                "affinity",
+                "student leadership",
+                "wellness",
+                "weekend",
+                "student life",
+                "life at webb",
+                "living at webb",
+                "life living",
+                "boarding",
+                "boarding life",
+                "campus life",
+                "what is webb like",
+                "culture",
+                "campus",
+            ]
+        ):
             scores["student_life"] += 4
         if any(keyword in lowered for keyword in ["museum", "alf", "unique learning", "unique program", "paleontology museum", "research opportunity"]):
             scores["museum_programs"] += 4
@@ -158,8 +218,17 @@ class WebbGroundingProvider:
                 "offering",
                 "offerings",
                 "classes",
+                "humanities",
+                "english",
+                "history",
                 "math",
+                "mathematics",
+                "computer science",
                 "science",
+                "world language",
+                "world languages",
+                "fine arts",
+                "art",
                 "department",
                 "change from",
                 "difference between",
@@ -167,6 +236,9 @@ class WebbGroundingProvider:
             ]
         ):
             scores["course_catalog"] += 3
+        if mentions_webb_context and not any(score > 0 for score in scores.values()):
+            scores["student_life"] += 2
+            scores["admissions_general"] += 1
         ordered = sorted(scores.items(), key=lambda item: (item[1], item[0]), reverse=True)
         top_route, top_score = ordered[0]
         second_score = ordered[1][1] if len(ordered) > 1 else 0
@@ -205,7 +277,7 @@ class WebbGroundingProvider:
             source_type=source_type,
             source_id=source_id,
             label=label,
-            snippet=snippet[:280],
+            snippet=snippet[:MAX_CITATION_SNIPPET_CHARS],
             metadata=metadata,
         )
 
@@ -259,6 +331,80 @@ class WebbGroundingProvider:
                 )
             )
         return hits
+
+    @staticmethod
+    def _is_course_department_overview_query(text: str) -> bool:
+        lowered = text.lower()
+        mentions_department = any(
+            token in lowered
+            for token in [
+                "humanities",
+                "english",
+                "history",
+                "math",
+                "mathematics",
+                "computer science",
+                "science",
+                "world language",
+                "world languages",
+                "fine arts",
+                "art",
+            ]
+        )
+        asks_for_broad_listing = any(
+            token in lowered
+            for token in [
+                "all",
+                "courses",
+                "classes",
+                "offerings",
+                "electives",
+                "advanced studies",
+                "honors",
+            ]
+        )
+        return mentions_department and asks_for_broad_listing and not COURSE_CODE_RE.search(text)
+
+    def _course_chunk_hits(self, query: str, limit: int) -> list[GroundingHit]:
+        rows = self.store.search_retrieval_chunks(
+            query,
+            snapshot_id=self.snapshot_id,
+            source_families=["course_catalog"],
+            limit=max(limit * 4, 12),
+        )
+        lowered = query.lower()
+        title_preferences = {
+            "humanities": ["humanities"],
+            "english": ["humanities"],
+            "history": ["humanities"],
+            "math": ["mathematics", "math", "computer science"],
+            "mathematics": ["mathematics", "math", "computer science"],
+            "computer science": ["computer science", "mathematics", "math"],
+            "science": ["science"],
+            "world language": ["world languages", "language", "french", "spanish", "chinese"],
+            "world languages": ["world languages", "language", "french", "spanish", "chinese"],
+            "language": ["world languages", "french", "spanish", "chinese"],
+            "fine arts": ["fine arts", "art", "music", "theater", "film"],
+            "art": ["fine arts", "art", "music", "theater", "film"],
+        }
+        preferred_tokens: list[str] = []
+        for trigger, tokens in title_preferences.items():
+            if trigger in lowered:
+                preferred_tokens.extend(tokens)
+        if preferred_tokens:
+            preferred = []
+            fallback = []
+            for row in rows:
+                haystack_parts = [row.heading or "", row.citation_label or ""]
+                if isinstance(row.extra, dict):
+                    haystack_parts.append(str(row.extra.get("page_title") or ""))
+                haystack = " ".join(haystack_parts).lower()
+                if any(token in haystack for token in preferred_tokens):
+                    preferred.append(row)
+                else:
+                    fallback.append(row)
+            rows = preferred if preferred else fallback
+        return self._chunk_rows_to_hits(rows[:limit], route="course_catalog")
 
     def _course_diff_hits(self, query: str, school_years: list[str]) -> list[GroundingHit]:
         if len(school_years) < 2:
@@ -418,6 +564,23 @@ class WebbGroundingProvider:
             limit=max(limit * 4, 12),
         )
         lowered = query.lower()
+        specific_focus_tokens = [
+            "dorm",
+            "dining",
+            "food",
+            "chapel",
+            "club",
+            "affinity",
+            "leadership",
+            "wellness",
+            "health",
+            "weekend",
+            "after school",
+            "travel",
+            "service",
+            "community",
+        ]
+        has_specific_focus = any(token in lowered for token in specific_focus_tokens)
         title_preferences = {
             "dorm": ["dorm"],
             "dining": ["dining"],
@@ -434,6 +597,14 @@ class WebbGroundingProvider:
             "service": ["community impact"],
             "community": ["community impact"],
         }
+        if not has_specific_focus:
+            title_preferences.update(
+                {
+                    "life": ["dorm life", "after school", "weekend", "wellness", "travel", "community impact", "student leadership", "dining"],
+                    "living": ["dorm life", "after school", "weekend", "wellness", "travel", "community impact", "student leadership", "dining"],
+                    "boarding": ["dorm life", "after school", "weekend", "wellness", "travel", "community impact", "student leadership", "dining"],
+                }
+            )
         preferred_tokens: list[str] = []
         for trigger, tokens in title_preferences.items():
             if trigger in lowered:
@@ -450,7 +621,7 @@ class WebbGroundingProvider:
                     preferred.append(row)
                 else:
                     fallback.append(row)
-            rows = preferred + fallback
+            rows = preferred if preferred else fallback
         return self._chunk_rows_to_hits(rows[:limit], route="student_life")
 
     def _museum_hits(self, query: str, limit: int) -> list[GroundingHit]:
@@ -574,12 +745,21 @@ class WebbGroundingProvider:
             wants_diff = len(school_years) >= 2 and any(
                 token in text.lower() for token in ["change", "changed", "difference", "different", "compare"]
             )
-            hits = self._course_diff_hits(text, school_years) if wants_diff else self._course_hits(text, school_years, limit)
+            if wants_diff:
+                hits = self._course_diff_hits(text, school_years)
+            elif self._is_course_department_overview_query(text):
+                hits = (
+                    self._course_chunk_hits(text, limit)
+                    or self._course_hits(text, school_years, limit)
+                    or self._publication_hits(text, limit)
+                )
+            else:
+                hits = self._course_hits(text, school_years, limit)
             if not hits and not wants_diff:
                 hits = (
                     self._course_hits(text, school_years, limit)
+                    or self._course_chunk_hits(text, limit)
                     or self._publication_hits(text, limit)
-                    or self._chunk_hits(text, route="course_catalog", families=["course_catalog"], limit=limit)
                 )
         elif effective_route == "faculty":
             hits = self._faculty_hits(text, limit)

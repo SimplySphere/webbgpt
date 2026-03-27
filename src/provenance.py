@@ -77,11 +77,13 @@ def grounding_snapshot_manifest(
     *,
     snapshot_id: str | None = None,
     seed_url_pack: str | None = None,
+    offline_seed_url_pack: str | None = None,
     handbook_url: str | None = None,
     source_policy_path: str | None = None,
     catalog_input_path: str | None = None,
 ) -> dict[str, Any]:
     seed_path = Path(seed_url_pack) if seed_url_pack else None
+    offline_seed_path = Path(offline_seed_url_pack) if offline_seed_url_pack else None
     handbook_path = Path(handbook_url) if handbook_url else None
     source_policy = Path(source_policy_path) if source_policy_path else None
     catalog_path = Path(catalog_input_path) if catalog_input_path else None
@@ -104,6 +106,8 @@ def grounding_snapshot_manifest(
         "snapshot_id": snapshot_id,
         "seed_url_pack": str(seed_path) if seed_path is not None else None,
         "seed_url_pack_sha256": file_sha256(seed_path) if seed_path is not None else None,
+        "offline_seed_url_pack": str(offline_seed_path) if offline_seed_path is not None else None,
+        "offline_seed_url_pack_sha256": file_sha256(offline_seed_path) if offline_seed_path is not None else None,
         "source_policy_path": str(source_policy) if source_policy is not None else None,
         "source_policy_sha256": file_sha256(source_policy) if source_policy is not None else None,
         "handbook_url": handbook_url,

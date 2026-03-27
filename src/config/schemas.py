@@ -365,6 +365,7 @@ class GroundingConfig:
     dsn: str = "sqlite:///artifacts/grounding/webbgpt.db"
     snapshot_id: str = "latest"
     seed_url_pack: str = "data/webb/seed_urls.json"
+    offline_seed_url_pack: str | None = None
     source_policy_path: str = "data/webb/source_policies.json"
     handbook_url: str | None = field(default_factory=_default_live_handbook_url)
     sync_on_start: bool = False

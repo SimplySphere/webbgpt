@@ -7,7 +7,6 @@ from config import ServeConfig
 
 def render_playground_html(config: ServeConfig) -> str:
     model_name = escape(config.model_name)
-    grounding_state = "enabled" if config.enable_grounding else "disabled"
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -134,9 +133,20 @@ def render_playground_html(config: ServeConfig) -> str:
         font-size: 0.98rem;
       }}
 
+      label.toggle.disabled {{
+        opacity: 0.6;
+      }}
+
       .toggle input {{
         width: 18px;
         height: 18px;
+      }}
+
+      .control-note {{
+        margin: -2px 2px 2px;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.45;
       }}
 
       button {{
@@ -267,6 +277,82 @@ def render_playground_html(config: ServeConfig) -> str:
         margin: 12px 0 0;
         color: var(--muted);
         line-height: 1.45;
+      }}
+
+      .citation-block {{
+        margin-top: 10px;
+        color: var(--muted);
+      }}
+
+      .citation-shell {{
+        border: 0;
+        background: transparent;
+      }}
+
+      .citation-shell summary {{
+        cursor: pointer;
+        list-style: none;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        color: var(--muted);
+      }}
+
+      .citation-shell summary::-webkit-details-marker {{
+        display: none;
+      }}
+
+      .citation-empty {{
+        font-size: 0.9rem;
+        line-height: 1.4;
+        color: var(--muted);
+      }}
+
+      .citation-groups {{
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+      }}
+
+      .citation-group {{
+        border-left: 2px solid var(--line);
+        padding-left: 10px;
+      }}
+
+      .citation-group summary {{
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 4px 0;
+        font-weight: 600;
+      }}
+
+      .citation-group summary::-webkit-details-marker {{
+        display: none;
+      }}
+
+      .citation-group-count {{
+        color: var(--muted);
+        font-size: 0.88rem;
+        font-weight: 400;
+      }}
+
+      .citation-snippets {{
+        padding: 2px 0 8px;
+        display: grid;
+        gap: 10px;
+      }}
+
+      .citation-snippets p {{
+        margin: 0;
+        line-height: 1.5;
+      }}
+
+      .citation-detail-label {{
+        color: var(--muted);
+        font-size: 0.9rem;
       }}
 
       .divider {{
@@ -478,10 +564,6 @@ def render_playground_html(config: ServeConfig) -> str:
             <span>{model_name}</span>
           </section>
           <section class="badge">
-            <strong>Grounding</strong>
-            <span>{grounding_state}</span>
-          </section>
-          <section class="badge">
             <strong>API</strong>
             <span><code>/v1/chat/completions</code></span>
           </section>
@@ -489,13 +571,16 @@ def render_playground_html(config: ServeConfig) -> str:
 
         <div class="controls">
           <label class="toggle">
-            <span>Enable Tools</span>
+            <span>Tailor for Webb</span>
             <input id="toolsToggle" type="checkbox" checked />
           </label>
-          <label class="toggle">
-            <span>Include Citations</span>
+          <label id="citationsToggleLabel" class="toggle">
+            <span>Show Citations</span>
             <input id="citationsToggle" type="checkbox" checked />
           </label>
+          <div id="controlsNote" class="control-note">
+            Show Citations adds source labels when Webb tailoring finds grounded sources.
+          </div>
         </div>
 
         <button id="clearButton" class="ghost" type="button">New Conversation</button>
@@ -537,6 +622,8 @@ def render_playground_html(config: ServeConfig) -> str:
       const statusLine = document.getElementById("statusLine");
       const toolsToggle = document.getElementById("toolsToggle");
       const citationsToggle = document.getElementById("citationsToggle");
+      const citationsToggleLabel = document.getElementById("citationsToggleLabel");
+      const controlsNote = document.getElementById("controlsNote");
 
       function setStatus(text, isError = false) {{
         statusLine.textContent = text;
@@ -588,6 +675,31 @@ def render_playground_html(config: ServeConfig) -> str:
 
       function extractReproCapsule(item) {{
         return extractMeta(item).repro_capsule || {{}};
+      }}
+
+      function extractRequest(item) {{
+        return (item.meta && item.meta.request) || {{}};
+      }}
+
+      function captureRequestState(conversation, safeDecode) {{
+        const tailoringRequested = Boolean(toolsToggle.checked);
+        const citationsSelected = Boolean(citationsToggle.checked);
+        return {{
+          messages: conversation.map(item => ({{ role: item.role, content: item.content }})),
+          tools: tailoringRequested,
+          citations: tailoringRequested && citationsSelected,
+          citationsSelected,
+          safe_decode: Boolean(safeDecode),
+        }};
+      }}
+
+      function syncDependentControls() {{
+        const tailoringRequested = Boolean(toolsToggle.checked);
+        citationsToggle.disabled = !tailoringRequested;
+        citationsToggleLabel.classList.toggle("disabled", !tailoringRequested);
+        controlsNote.textContent = tailoringRequested
+          ? "Show Citations adds source labels when Webb tailoring finds grounded sources."
+          : "Show Citations requires Tailor for Webb, because citations only come from grounded Webb sources.";
       }}
 
       function fallbackCopyText(payload, successMessage) {{
@@ -662,11 +774,12 @@ def render_playground_html(config: ServeConfig) -> str:
       }}
 
       function requestPayload(conversation, safeDecode) {{
+        const request = captureRequestState(conversation, safeDecode);
         return {{
-          messages: conversation.map(item => ({{ role: item.role, content: item.content }})),
-          tools: toolsToggle.checked,
-          citations: citationsToggle.checked,
-          safe_decode: Boolean(safeDecode),
+          messages: request.messages,
+          tools: request.tools,
+          citations: request.citations,
+          safe_decode: request.safe_decode,
         }};
       }}
 
@@ -687,6 +800,7 @@ def render_playground_html(config: ServeConfig) -> str:
 
       function createTraceCard(item, index) {{
         const meta = extractMeta(item);
+        const request = extractRequest(item);
         const provenance = extractProvenance(item);
         const reproCapsule = extractReproCapsule(item);
         const status = meta.status || {{}};
@@ -708,16 +822,26 @@ def render_playground_html(config: ServeConfig) -> str:
 
         const responseStatus = createKvSection("Response Status", [
           {{ label: "Interpretation", value: meta.summary }},
-          {{ label: "Grounded", value: status.grounded ? "yes" : "no" }},
-          {{ label: "Cited", value: status.cited ? "yes" : "no" }},
+          {{ label: "Grounded response", value: status.grounded ? "yes" : "no" }},
+          {{ label: "Citations shown", value: status.cited ? "yes" : "no" }},
           {{ label: "Abstained", value: status.abstained ? "yes" : "no" }},
           {{ label: "Degenerate output", value: status.degenerate_output ? "yes" : "no" }},
-          {{ label: "used_tools", value: item.meta.usedTools ? "yes" : "no" }},
+          {{ label: "Webb tailoring used", value: item.meta.usedTools ? "yes" : "no" }},
           {{ label: "Citation count", value: (item.meta.citations || []).length }},
           {{ label: "Response characters", value: responseText.length }},
         ]);
         if (responseStatus) {{
           body.appendChild(responseStatus);
+        }}
+
+        const requestSection = createKvSection("Request Settings", [
+          {{ label: "Tailor for Webb requested", value: request.tools ? "yes" : "no" }},
+          {{ label: "Show Citations selected", value: request.citationsSelected ? "yes" : "no" }},
+          {{ label: "Show Citations active", value: request.citations ? "yes" : "no" }},
+          {{ label: "Safe decode requested", value: request.safeDecode ? "yes" : "no" }},
+        ]);
+        if (requestSection) {{
+          body.appendChild(requestSection);
         }}
 
         const groundingSection = createKvSection("Grounding", [
@@ -897,6 +1021,133 @@ def render_playground_html(config: ServeConfig) -> str:
         return wrapper;
       }}
 
+      function createVisibleCitationBlock(item) {{
+        const meta = extractMeta(item);
+        const request = extractRequest(item);
+        const status = meta.status || {{}};
+        const grounding = meta.grounding || {{}};
+        const rawCitations = (item.meta && item.meta.citations) || [];
+        const groups = new Map();
+
+        function simplifyLabel(label) {{
+          const text = String(label || "").trim();
+          if (!text) {{
+            return "Source";
+          }}
+          const parts = text.split("|").map(part => part.trim()).filter(Boolean);
+          if (!parts.length) {{
+            return text;
+          }}
+          if (parts.length > 1 && /The Webb Schools|Private Boarding & Day School in California/i.test(parts.slice(1).join(" | "))) {{
+            return parts[0];
+          }}
+          return text;
+        }}
+
+        function cleanSnippet(snippet, label) {{
+          let text = String(snippet || "").trim();
+          if (!text) {{
+            return "";
+          }}
+          const shortLabel = simplifyLabel(label).toLowerCase();
+          const lines = text.split(/\\n+/).map(part => part.trim()).filter(Boolean);
+          if (lines.length > 1 && simplifyLabel(lines[0]).toLowerCase() === shortLabel) {{
+            text = lines.slice(1).join("\\n").trim();
+          }}
+          const lowered = text.toLowerCase();
+          const prefix = shortLabel + " ";
+          if (lowered.startsWith(prefix)) {{
+            text = text.slice(prefix.length).trim();
+          }}
+          return text;
+        }}
+
+        function ensureGroup(rawLabel) {{
+          const displayLabel = simplifyLabel(rawLabel);
+          if (!groups.has(displayLabel)) {{
+            groups.set(displayLabel, {{
+              displayLabel,
+              rawLabels: new Set(),
+              snippets: [],
+              snippetKeys: new Set(),
+            }});
+          }}
+          const group = groups.get(displayLabel);
+          group.rawLabels.add(String(rawLabel || displayLabel).trim());
+          return group;
+        }}
+
+        for (const citation of rawCitations) {{
+          const rawLabel = citation.label || citation.source_id || citation.source_type || "Source";
+          const snippet = cleanSnippet(citation.snippet || "", rawLabel);
+          const group = ensureGroup(rawLabel);
+          const snippetKey = snippet;
+          if (snippet && !group.snippetKeys.has(snippetKey)) {{
+            group.snippetKeys.add(snippetKey);
+            group.snippets.push(snippet);
+          }}
+        }}
+
+        if (!groups.size) {{
+          for (const rawLabel of grounding.citation_labels || []) {{
+            ensureGroup(rawLabel);
+          }}
+        }}
+
+        if (!groups.size) {{
+          if (!request.citations) {{
+            return null;
+          }}
+          const block = createElement("section", "citation-block");
+          let note = "Sources: none surfaced for this response.";
+          if (!status.grounded) {{
+            note = "Sources: none. This response was model-only.";
+          }} else if (grounding.abstained_due_to_no_hits) {{
+            note = "Sources: none found in the current Webb snapshot.";
+          }} else if (status.degenerate_output) {{
+            note = "Sources: none surfaced because the response was intercepted as malformed.";
+          }}
+          block.appendChild(createElement("div", "citation-empty", note));
+          return block;
+        }}
+
+        const block = createElement("section", "citation-block");
+        const shell = createElement("details", "citation-shell");
+        const shellSummary = createElement(
+          "summary",
+          "",
+          "Sources: " + Array.from(groups.keys()).join(", ")
+        );
+        shell.appendChild(shellSummary);
+        const list = createElement("div", "citation-groups");
+        for (const group of groups.values()) {{
+          const detail = createElement("details", "citation-group");
+          const summary = createElement("summary", "");
+          summary.appendChild(createElement("span", "", group.displayLabel));
+          const countText = group.snippets.length
+            ? `${{group.snippets.length}} passage${{group.snippets.length === 1 ? "" : "s"}}`
+            : `${{group.rawLabels.size}} source${{group.rawLabels.size === 1 ? "" : "s"}}`;
+          summary.appendChild(createElement("span", "citation-group-count", countText));
+          detail.appendChild(summary);
+
+          const snippets = createElement("div", "citation-snippets");
+          if (group.snippets.length) {{
+            group.snippets.forEach(snippet => {{
+              snippets.appendChild(createElement("p", "", snippet));
+            }});
+          }} else {{
+            Array.from(group.rawLabels).forEach(rawLabel => {{
+              snippets.appendChild(createElement("p", "citation-detail-label", rawLabel));
+            }});
+          }}
+          detail.appendChild(snippets);
+          list.appendChild(detail);
+        }}
+        shell.appendChild(list);
+        block.appendChild(shell);
+        return block;
+      }}
+
       function render() {{
         chatLog.innerHTML = "";
         if (!messages.length) {{
@@ -916,6 +1167,11 @@ def render_playground_html(config: ServeConfig) -> str:
             const body = createElement("pre", "");
             body.textContent = status.degenerate_output && debug.raw_output ? debug.raw_output : item.content;
             card.appendChild(body);
+
+            const citationBlock = createVisibleCitationBlock(item);
+            if (citationBlock) {{
+              card.appendChild(citationBlock);
+            }}
 
             const badges = createElement("div", "badge-row");
             if (!status.degenerate_output) {{
@@ -955,13 +1211,19 @@ def render_playground_html(config: ServeConfig) -> str:
         chatLog.scrollTop = chatLog.scrollHeight;
       }}
 
-      function normalizeAssistantPayload(payload) {{
+      function normalizeAssistantPayload(payload, request) {{
         return {{
           role: "assistant",
           content: payload.text || "",
           meta: {{
             usedTools: payload.used_tools,
             citations: payload.citations || [],
+            request: {{
+              tools: Boolean(request && request.tools),
+              citations: Boolean(request && request.citations),
+              citationsSelected: Boolean(request && request.citationsSelected),
+              safeDecode: Boolean(request && request.safe_decode),
+            }},
             metadata: payload.metadata || {{}},
           }},
         }};
@@ -981,8 +1243,9 @@ def render_playground_html(config: ServeConfig) -> str:
         setStatus("Generating response...");
 
         try {{
+          const request = captureRequestState(messages, false);
           const payload = await requestCompletion(messages, false);
-          messages.push(normalizeAssistantPayload(payload));
+          messages.push(normalizeAssistantPayload(payload, request));
           render();
           setStatus("Response ready.");
         }} catch (error) {{
@@ -1002,8 +1265,9 @@ def render_playground_html(config: ServeConfig) -> str:
         sendButton.disabled = true;
         setStatus(safeDecode ? "Retrying with safe preset..." : "Retrying response...");
         try {{
+          const request = captureRequestState(history, safeDecode);
           const payload = await requestCompletion(history, safeDecode);
-          messages.push(normalizeAssistantPayload(payload));
+          messages.push(normalizeAssistantPayload(payload, request));
           render();
           setStatus(safeDecode ? "Safe retry complete." : "Retry complete.");
         }} catch (error) {{
@@ -1032,7 +1296,12 @@ def render_playground_html(config: ServeConfig) -> str:
         promptInput.focus();
       }});
 
+      toolsToggle.addEventListener("change", () => {{
+        syncDependentControls();
+      }});
+
       render();
+      syncDependentControls();
       promptInput.focus();
     </script>
   </body>

@@ -112,6 +112,7 @@ def test_eval_config_roundtrip_with_release_gates():
         grounding=GroundingConfig(
             dsn="sqlite:///artifacts/grounding/webbgpt.db",
             seed_url_pack="data/webb/seed_urls_demo.json",
+            offline_seed_url_pack="data/webb/seed_urls_private.json",
             handbook_url="data/webb/mock/handbook.txt",
             sync_on_start=True,
         ),
@@ -124,6 +125,7 @@ def test_eval_config_roundtrip_with_release_gates():
     assert restored.no_repeat_ngram_size == 5
     assert restored.grounding is not None
     assert restored.grounding.seed_url_pack == "data/webb/seed_urls_demo.json"
+    assert restored.grounding.offline_seed_url_pack == "data/webb/seed_urls_private.json"
     assert restored.grounding.sync_on_start is True
     assert restored.grounding.route_fanout_limit == 2
     assert restored.grounding.planner_beta_enabled is False
